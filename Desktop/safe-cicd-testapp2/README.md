@@ -15,6 +15,7 @@ A simple Flask app designed for testing CI/CD platforms based on security criter
 3. Install dependencies: `pip install -r requirements.txt`
 4. Run the app: `python app.py`
 5. Run tests: `pytest`
+5. Run tests: `pytest`
 
 ## Usage
 
