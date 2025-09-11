@@ -175,17 +175,13 @@ jobs:
         continue-on-error: true
         run: |
           sha256sum -c sbom.cdx.json.sha256
-          sha256sum -c predicate.json.sha256
-
-  persist_evidence:
+          sha256sum -c predicate.json.sha256 
+      
+        persist_evidence:
     # [INFRA][EVIDENCE] Пишем доказательства ТОЛЬКО если весь ран прошёл успешно.
     # PR из форка пропускаем (там нет прав пушить в репо).
     needs: [verify_non_blocking]
-    if: >
-      success() && (
-        github.event_name != 'pull_request' ||
-        github.event.pull_request.head.repo.full_name == github.repository
-      )
+    if: ${{ success() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ubuntu-latest
 
     # [INFRA][EVIDENCE] Права на коммит и чтение логов/артефактов через Actions API
@@ -194,55 +190,53 @@ jobs:
       actions: read
 
     steps:
-      # [INFRA][EVIDENCE] Берём репозиторий (дефолтную ветку), потом переключимся на evidence
+    # [INFRA][EVIDENCE] Берём репозиторий (дефолтную ветку), потом переключимся на evidence
       - name: Checkout default branch [INFRA][EVIDENCE]
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # [INFRA][EVIDENCE] Создаём/переключаемся на ветку evidence (если нет — будет создана)
+    # [INFRA][EVIDENCE] Создаём/переключаемся на ветку evidence (если нет — будет создана)
       - name: Switch/Create evidence branch [INFRA][EVIDENCE]
-        run: |
-          git checkout -B evidence
+        run: git checkout -B evidence
 
-      # [INFRA][EVIDENCE] Готовим каталог для ТЕКУЩЕГО run + attempt (чтобы re-run не перетирал)
+    # [INFRA][EVIDENCE] Готовим каталог для ТЕКУЩЕГО run + attempt (чтобы re-run не перетирал)
       - name: Prepare destination [INFRA][EVIDENCE]
         id: prep
         run: |
           RUN_ID='${{ github.run_id }}'
           ATTEMPT='${{ github.run_attempt }}'
-          METRIC="M1-L1"
+          METRIC='M1-L1'
           DEST="evidence/${METRIC}/run-${RUN_ID}-attempt-${ATTEMPT}"
           mkdir -p "$DEST"
-          echo "dest=$DEST"     >> "$GITHUB_OUTPUT"
+          echo "dest=$DEST" >> "$GITHUB_OUTPUT"
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
           echo "attempt=$ATTEMPT" >> "$GITHUB_OUTPUT"
 
-      # [INFRA][EVIDENCE] ЛОГИ КАЖДОГО JOB (unit_tests, build_and_sign, verify_non_blocking и т.д.)
+    # [INFRA][EVIDENCE] ЛОГИ КАЖДОГО JOB (unit_tests, build_and_sign, verify_non_blocking и т.д.)
       - name: Download job logs (ZIP per job) [INFRA][EVIDENCE]
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          sudo apt-get update -y && sudo apt-get install -y jq >/dev/null || true
+          sudo apt-get update -y >/dev/null 2>&1 || true
+          sudo apt-get install -y jq >/dev/null 2>&1 || true
 
           OWNER_REPO="${{ github.repository }}"
           RUN_ID="${{ steps.prep.outputs.run_id }}"
           API="https://api.github.com/repos/${OWNER_REPO}/actions/runs/${RUN_ID}/jobs?per_page=100"
           mkdir -p "${{ steps.prep.outputs.dest }}/logs"
 
-          # тянем список джобов c проверкой статуса (иначе jq свалится)
-          HTTP=$(curl -sSL -w "%{http_code}" \
+           HTTP=$(curl -sSL -w "%{http_code}" \
                  -H "Authorization: Bearer $GH_TOKEN" \
                  -H "Accept: application/vnd.github+json" \
                  "$API" -o jobs.json)
           if [ "$HTTP" != "200" ]; then
             echo "WARN: cannot fetch jobs (HTTP $HTTP)"; cat jobs.json || true
-            exit 0  # не валим evidence; ниже ещё будет общий ZIP
+            exit 0
           fi
 
-          # качаем логи по каждому job (кроме текущего persist_evidence)
-          jq -r '.jobs[] | "\(.id)\t\(.name)"' jobs.json | while IFS=$'\t' read -r JID JNAME; do
+           jq -r '.jobs[] | "\(.id)\t\(.name)"' jobs.json | while IFS=$'\t' read -r JID JNAME; do
             [ "$JNAME" = "persist_evidence" ] && continue
             SAFE_NAME=$(echo "$JNAME" | tr ' /' '__')
             curl -sSL \
@@ -252,7 +246,7 @@ jobs:
               -o "${{ steps.prep.outputs.dest }}/logs/${SAFE_NAME}-${JID}.zip" || true
           done
 
-      # [INFRA][EVIDENCE] Общий ZIP всех логов run'а (дублирует per-job, можно закомментить для экономии места)
+      # [INFRA][EVIDENCE] Общий ZIP всех логов run'а (можно закомментить для экономии места)
       - name: Download whole run logs (single ZIP) [INFRA][EVIDENCE]
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -263,8 +257,7 @@ jobs:
             "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/logs" \
             -o "${{ steps.prep.outputs.dest }}/logs-${{ github.run_id }}.zip" || true
 
-      # [К1][М1][Л1][EVIDENCE] СКАЧИВАЕМ ТОЛЬКО УКАЗАННЫЕ АРТЕФАКТЫ.
-      # Добавишь ещё такой же блок — просто поменяй with.name: <ИМЯ_АРТЕФАКТА>.
+    # [К1][М1][Л1][EVIDENCE] СКАЧИВАЕМ ТОЛЬКО УКАЗАННЫЕ АРТЕФАКТЫ.
       - name: Download artifact: c1-m1-l1-checks [К1][М1][Л1][EVIDENCE]
         uses: actions/download-artifact@v4
         continue-on-error: true
@@ -273,14 +266,7 @@ jobs:
           run-id: ${{ github.run_id }}
           path: ${{ steps.prep.outputs.dest }}/artifacts/c1-m1-l1-checks
 
-      # - name: Download artifact: <ДОБАВИ СЮДА ЕЩЁ ОДИН, ЕСЛИ НУЖНО>
-      #   uses: actions/download-artifact@v4
-      #   with:
-      #     name: <имя-артефакта>
-      #     run-id: ${{ github.run_id }}
-      #     path: ${{ steps.prep.outputs.dest }}/artifacts/<имя-артефакта>
-
-      # [INFRA][EVIDENCE] Снимок текущего workflow YAML (для трассируемости)
+    # [INFRA][EVIDENCE] Снимок текущего workflow YAML (для трассируемости)
       - name: Snapshot workflow file [INFRA][EVIDENCE]
         run: |
           mkdir -p "${{ steps.prep.outputs.dest }}/workflow"
@@ -289,22 +275,22 @@ jobs:
       # [INFRA][EVIDENCE] Метаданные для проверяющего (Run/Commit/Conclusion)
       - name: Write metadata (README) [INFRA][EVIDENCE]
         run: |
-          cat > "${{ steps.prep.outputs.dest }}/README.txt" <<EOF
-          Evidence bundle for C1/M1/L1
-          Repo:        ${{ github.repository }}
-          Workflow:    ${{ github.workflow }}
-          Run ID:      ${{ github.run_id }}
-          Run number:  ${{ github.run_number }}
-          Attempt:     ${{ github.run_attempt }}
-          Conclusion:  success
-          Commit SHA:  ${{ github.sha }}
-
-          Contents:
-          - logs/*.zip                              → логи по каждому job текущего run
-          - logs-<RUN_ID>.zip                       → общий ZIP всех логов run (дублирует per-job)
-          - artifacts/c1-m1-l1-checks/*             → IMAGE_DIGEST.txt, checksums.txt, *.sha256, sbom.cdx.json, predicate.json
-          - workflow/build-sign-verify.yml          → снимок WF с комментариями
-          EOF
+          {
+            echo "Evidence bundle for C1/M1/L1"
+            echo "Repo:        ${{ github.repository }}"
+            echo "Workflow:    ${{ github.workflow }}"
+            echo "Run ID:      ${{ github.run_id }}"
+            echo "Run number:  ${{ github.run_number }}"
+            echo "Attempt:     ${{ github.run_attempt }}"
+            echo "Conclusion:  success"
+            echo "Commit SHA:  ${{ github.sha }}"
+            echo
+            echo "Contents:"
+            echo "- logs/*.zip                              -> логи по каждому job"
+            echo "- logs-${{ github.run_id }}.zip           -> общий ZIP всех логов run"
+            echo "- artifacts/c1-m1-l1-checks/*             -> IMAGE_DIGEST.txt, checksums.txt, *.sha256, sbom.cdx.json, predicate.json"
+            echo "- workflow/build-sign-verify.yml          -> снимок WF с комментариями"
+          } > "${{ steps.prep.outputs.dest }}/README.txt"
 
       # [INFRA][EVIDENCE] Коммитим и пушим в ветку evidence
       - name: Commit & push to evidence [INFRA][EVIDENCE]
@@ -314,3 +300,4 @@ jobs:
           git add -A
           git commit -m "Evidence: C1/M1/L1 for run ${{ github.run_id }} (success)" || echo "No changes to commit"
           git push origin evidence
+    
