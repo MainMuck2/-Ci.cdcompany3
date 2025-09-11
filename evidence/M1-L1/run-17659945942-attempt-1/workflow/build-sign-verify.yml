@@ -1,0 +1,303 @@
+# .github/workflows/build-sign-verify.yml
+name: C1-M1-L1 | build, sign, checksums, verify (warn)
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+# [Критерий 1][Метрика М1][Уровень L1]
+# Зачем: минимум прав, чтобы собрать+подписать артефакт и проверить его (WARN).
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+jobs:
+  unit_tests:
+    runs-on: ubuntu-latest
+    steps:
+      # [К1][М1][Л1] Зачем: взять код.
+      - uses: actions/checkout@v4
+
+      # [К1][М1][Л1] Зачем: нужная версия Python для тестов.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # [К1][М1][Л1] Зачем: установить зависимости и pytest.
+      - run: pip install -r requirements.txt pytest
+
+      # [К1][М1][Л1] Зачем (INFRA): гарантировать корректные импорты в CI.
+      - name: Run unit tests (К1–М1–Л1 infra)
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          APP_VERSION: dev
+        run: python -m pytest -q
+
+  build_and_sign:
+    # [К1][М1][Л1] Зачем: собрать контейнерный артефакт, ПОДПИСАТЬ его (keyless по OIDC), и опубликовать checksums.
+    needs: unit_tests
+    runs-on: ubuntu-latest
+    outputs:
+      image_ref: ${{ steps.compute.outputs.image_ref }}
+      image: ${{ steps.img.outputs.image }}
+    steps:
+      # [К1][М1][Л1] Зачем: получить исходники.
+      - uses: actions/checkout@v4
+
+      # [К1][М1][Л1] Зачем: вычислить имя образа GHCR АВТОМАТИЧЕСКИ (нижний регистр) через bash.
+      - name: Compute IMAGE (auto, lowercase) [К1][М1][Л1]
+        id: img
+        shell: bash
+        run: |
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      # [К1][М1][Л1] Зачем: авторизация для публикации образа в GHCR.
+      - name: Login to GHCR [К1][М1][Л1]
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # [К1][М1][Л1] Зачем: builder для стабильной/кэшируемой сборки.
+      - name: Set up Buildx [К1][М1][Л1]
+        uses: docker/setup-buildx-action@v3
+
+      # [К1][М1][Л1] Подтребование «Подписываем артефакт» — подготовка:
+      # Зачем: собрать и ЗАПУШИТЬ образ с ТЕГОМ; дайджест вернётся в outputs.
+      - name: Build and push image (tagged) [К1][М1][Л1]
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.img.outputs.image }}:ci-l1
+
+      # [К1][М1][Л1] Зачем: сформировать канонический ref image@sha256:... для подписи и verify.
+      - name: Compute image ref [К1][М1][Л1]
+        id: compute
+        shell: bash
+        run: echo "image_ref=${{ steps.img.outputs.image }}@${{ steps.build.outputs.digest }}" >> "$GITHUB_OUTPUT"
+
+      # [К1][М1][Л1] Зачем: установить cosign (подпись/верификация).
+      - name: Install cosign [К1][М1][Л1]
+        uses: sigstore/cosign-installer@v3
+
+      # [К1][М1][Л1] Подтребование «Подписываем артефакт» — ИСПОЛНЕНИЕ:
+      # Зачем: keyless-подпись (Fulcio/Rekor) ПО ДАЙДЖЕСТУ (без двусмысленности тегов).
+      - name: Keyless sign image (Fulcio/Rekor) [К1][М1][Л1]
+        run: cosign sign --yes "${{ steps.compute.outputs.image_ref }}"
+
+      # (Необяз.) [К1][М1][Л1] Зачем: минимальная attestation происхождения.
+      - name: Create minimal provenance predicate [К1][М1][Л1]
+        run: |
+          cat > predicate.json <<'JSON'
+          {"_type":"https://in-toto.io/Statement/v0.1","predicateType":"https://slsa.dev/provenance/v1",
+           "predicate":{"builder":{"id":"github-actions"},"buildType":"container-build",
+           "invocation":{"id":"${{ github.run_id }}",
+             "parameters":{"repo":"${{ github.repository }}","sha":"${{ github.sha }}"}}}}
+          JSON
+
+      # [К1][М1][Л1] Подтребование «Публикуем checksums»:
+      # Зачем: digest образа и sha256 файлов-артефактов (SBOM, predicate).
+      - name: Generate SBOM (CycloneDX) [К1][М1][Л1]
+        uses: anchore/sbom-action@v0
+        with:
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+
+      - name: Generate checksums & digest list [К1][М1][Л1]
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "${{ steps.compute.outputs.image_ref }}" > IMAGE_DIGEST.txt
+          sha256sum sbom.cdx.json > sbom.cdx.json.sha256
+          sha256sum predicate.json > predicate.json.sha256
+          {
+            printf "artifact=IMAGE\tdigest=%s\n" "${{ steps.build.outputs.digest }}"
+            printf "artifact=sbom.cdx.json\tsha256=%s\n" "$(cut -d' ' -f1 sbom.cdx.json.sha256)"
+            printf "artifact=predicate.json\tsha256=%s\n" "$(cut -d' ' -f1 predicate.json.sha256)"
+          } > checksums.txt
+
+      # [К1][М1][Л1] Зачем: сохранить артефакты для этапа verify.
+      - name: Upload checksums & related artifacts [К1][М1][Л1]
+        uses: actions/upload-artifact@v4
+        with:
+          name: c1-m1-l1-checks
+          path: |
+            IMAGE_DIGEST.txt
+            checksums.txt
+            sbom.cdx.json
+            sbom.cdx.json.sha256
+            predicate.json
+            predicate.json.sha256
+
+  verify_non_blocking:
+    # [К1][М1][Л1] Подтребование: «Перед Promote/Deploy — verify(hash+sig) против локального trust-store (WARN)»
+    needs: build_and_sign
+    runs-on: ubuntu-latest
+    steps:
+      # [К1][М1][Л1] Зачем: взять код (для чтения workflow_ref) и артефакты.
+      - uses: actions/checkout@v4
+
+      - name: Download checks artifacts [К1][М1][Л1]
+        uses: actions/download-artifact@v4
+        with:
+          name: c1-m1-l1-checks
+
+      # [К1][М1][Л1] Зачем: cosign для verify.
+      - uses: sigstore/cosign-installer@v3
+
+      # [К1][М1][Л1] Локальный TRUST-STORE (АВТО):
+      # Зачем: пин на ТОТ ЖЕ workflow@ref (owner/repo/.github/workflows/…@refs/heads/main) и фиксированный issuer.
+      - name: Compute local trust-store (auto) [К1][М1][Л1]
+        id: trust
+        shell: bash
+        run: |
+          echo "CERT_IDENTITY=https://github.com/${GITHUB_WORKFLOW_REF}" >> "$GITHUB_OUTPUT"
+          echo "OIDC_ISSUER=https://token.actions.githubusercontent.com" >> "$GITHUB_OUTPUT"
+
+      # [К1][М1][Л1] verify(SIG) — WARN-only: проверяем подпись по локальному trust-store.
+      - name: Verify signature (WARN-only, pinned identity) [К1][М1][Л1]
+        continue-on-error: true
+        run: |
+          cosign verify \
+            --certificate-identity "${{ steps.trust.outputs.CERT_IDENTITY }}" \
+            --certificate-oidc-issuer "${{ steps.trust.outputs.OIDC_ISSUER }}" \
+            "${{ needs.build_and_sign.outputs.image_ref }}"
+
+      # [К1][М1][Л1] verify(HASH) — WARN-only: проверяем sha256 артефактов.
+      - name: Verify checksums (WARN-only) [К1][М1][Л1]
+        continue-on-error: true
+        run: |
+          sha256sum -c sbom.cdx.json.sha256
+          sha256sum -c predicate.json.sha256 
+      
+  persist_evidence:
+    # [INFRA][EVIDENCE] Пишем доказательства ТОЛЬКО если весь ран прошёл успешно.
+    # PR из форка пропускаем (там нет прав пушить в репо).
+    needs: [verify_non_blocking]
+    if: ${{ success() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: ubuntu-latest
+
+    # [INFRA][EVIDENCE] Права на коммит и чтение логов/артефактов через Actions API
+    permissions:
+      contents: write
+      actions: read
+
+    steps:
+      # [INFRA][EVIDENCE] Берём репозиторий (дефолтную ветку), потом переключимся на evidence
+      - name: Checkout default branch [INFRA][EVIDENCE]
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # [INFRA][EVIDENCE] Создаём/переключаемся на ветку evidence (если нет — будет создана)
+      - name: Switch/Create evidence branch [INFRA][EVIDENCE]
+        run: git checkout -B evidence
+
+      # [INFRA][EVIDENCE] Готовим каталог для ТЕКУЩЕГО run + attempt (чтобы re-run не перетирал)
+      - name: Prepare destination [INFRA][EVIDENCE]
+        id: prep
+        run: |
+          RUN_ID='${{ github.run_id }}'
+          ATTEMPT='${{ github.run_attempt }}'
+          METRIC='M1-L1'
+          DEST="evidence/${METRIC}/run-${RUN_ID}-attempt-${ATTEMPT}"
+          mkdir -p "$DEST"
+          echo "dest=$DEST" >> "$GITHUB_OUTPUT"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "attempt=$ATTEMPT" >> "$GITHUB_OUTPUT"
+
+      # [INFRA][EVIDENCE] ЛОГИ КАЖДОГО JOB (unit_tests, build_and_sign, verify_non_blocking и т.д.)
+      - name: Download job logs (ZIP per job) [INFRA][EVIDENCE]
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y >/dev/null 2>&1 || true
+          sudo apt-get install -y jq >/dev/null 2>&1 || true
+
+          OWNER_REPO="${{ github.repository }}"
+          RUN_ID="${{ steps.prep.outputs.run_id }}"
+          API="https://api.github.com/repos/${OWNER_REPO}/actions/runs/${RUN_ID}/jobs?per_page=100"
+          mkdir -p "${{ steps.prep.outputs.dest }}/logs"
+
+          HTTP=$(curl -sSL -w "%{http_code}" \
+                 -H "Authorization: Bearer $GH_TOKEN" \
+                 -H "Accept: application/vnd.github+json" \
+                 "$API" -o jobs.json)
+          if [ "$HTTP" != "200" ]; then
+            echo "WARN: cannot fetch jobs (HTTP $HTTP)"; cat jobs.json || true
+            exit 0
+          fi
+
+          jq -r '.jobs[] | "\(.id)\t\(.name)"' jobs.json | while IFS=$'\t' read -r JID JNAME; do
+            [ "$JNAME" = "persist_evidence" ] && continue
+            SAFE_NAME=$(echo "$JNAME" | tr ' /' '__')
+            curl -sSL \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${OWNER_REPO}/actions/jobs/${JID}/logs" \
+              -o "${{ steps.prep.outputs.dest }}/logs/${SAFE_NAME}-${JID}.zip" || true
+          done
+
+      # [INFRA][EVIDENCE] Общий ZIP всех логов run'а (можно закомментить для экономии места)
+      - name: Download whole run logs (single ZIP) [INFRA][EVIDENCE]
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -sSL \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/logs" \
+            -o "${{ steps.prep.outputs.dest }}/logs-${{ github.run_id }}.zip" || true
+
+      # [К1][М1][Л1][EVIDENCE] СКАЧИВАЕМ ТОЛЬКО УКАЗАННЫЕ АРТЕФАКТЫ.
+      - name: Download artifact c1-m1-l1-checks [К1][М1][Л1][EVIDENCE]
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: c1-m1-l1-checks
+          run-id: ${{ github.run_id }}
+          path: ${{ steps.prep.outputs.dest }}/artifacts/c1-m1-l1-checks
+
+      # [INFRA][EVIDENCE] Снимок текущего workflow YAML (для трассируемости)
+      - name: Snapshot workflow file [INFRA][EVIDENCE]
+        run: |
+          mkdir -p "${{ steps.prep.outputs.dest }}/workflow"
+          cp -a .github/workflows/build-sign-verify.yml "${{ steps.prep.outputs.dest }}/workflow/" || true
+
+      # [INFRA][EVIDENCE] Метаданные для проверяющего (Run/Commit/Conclusion)
+      - name: Write metadata (README) [INFRA][EVIDENCE]
+        run: |
+          {
+            echo "Evidence bundle for C1/M1/L1"
+            echo "Repo:        ${{ github.repository }}"
+            echo "Workflow:    ${{ github.workflow }}"
+            echo "Run ID:      ${{ github.run_id }}"
+            echo "Run number:  ${{ github.run_number }}"
+            echo "Attempt:     ${{ github.run_attempt }}"
+            echo "Conclusion:  success"
+            echo "Commit SHA:  ${{ github.sha }}"
+            echo
+            echo "Contents:"
+            echo "- logs/*.zip                              -> логи по каждому job"
+            echo "- logs-${{ github.run_id }}.zip           -> общий ZIP всех логов run"
+            echo "- artifacts/c1-m1-l1-checks/*             -> IMAGE_DIGEST.txt, checksums.txt, *.sha256, sbom.cdx.json, predicate.json"
+            echo "- workflow/build-sign-verify.yml          -> снимок WF с комментариями"
+          } > "${{ steps.prep.outputs.dest }}/README.txt"
+
+      # [INFRA][EVIDENCE] Коммитим и пушим в ветку evidence
+      - name: Commit & push to evidence [INFRA][EVIDENCE]
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Evidence: C1/M1/L1 for run ${{ github.run_id }} (success)" || echo "No changes to commit"
+          git push origin evidence
+    

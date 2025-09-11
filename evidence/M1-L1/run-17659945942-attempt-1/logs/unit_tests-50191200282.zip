@@ -1,0 +1,303 @@
+﻿2025-09-11T23:31:22.3010485Z Current runner version: '2.328.0'
+2025-09-11T23:31:22.3046910Z ##[group]Runner Image Provisioner
+2025-09-11T23:31:22.3049083Z Hosted Compute Agent
+2025-09-11T23:31:22.3050091Z Version: 20250829.383
+2025-09-11T23:31:22.3051213Z Commit: 27cb235aab5b0e52e153a26cd86b4742e89dac5d
+2025-09-11T23:31:22.3052578Z Build Date: 2025-08-29T13:48:48Z
+2025-09-11T23:31:22.3053614Z ##[endgroup]
+2025-09-11T23:31:22.3054654Z ##[group]Operating System
+2025-09-11T23:31:22.3055610Z Ubuntu
+2025-09-11T23:31:22.3056566Z 24.04.3
+2025-09-11T23:31:22.3057254Z LTS
+2025-09-11T23:31:22.3058222Z ##[endgroup]
+2025-09-11T23:31:22.3059085Z ##[group]Runner Image
+2025-09-11T23:31:22.3060010Z Image: ubuntu-24.04
+2025-09-11T23:31:22.3060770Z Version: 20250907.24.1
+2025-09-11T23:31:22.3062557Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20250907.24/images/ubuntu/Ubuntu2404-Readme.md
+2025-09-11T23:31:22.3065163Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20250907.24
+2025-09-11T23:31:22.3066891Z ##[endgroup]
+2025-09-11T23:31:22.3068992Z ##[group]GITHUB_TOKEN Permissions
+2025-09-11T23:31:22.3071911Z Contents: read
+2025-09-11T23:31:22.3072712Z Metadata: read
+2025-09-11T23:31:22.3073618Z Packages: write
+2025-09-11T23:31:22.3074692Z ##[endgroup]
+2025-09-11T23:31:22.3078136Z Secret source: Actions
+2025-09-11T23:31:22.3079964Z Prepare workflow directory
+2025-09-11T23:31:22.3503906Z Prepare all required actions
+2025-09-11T23:31:22.3559958Z Getting action download info
+2025-09-11T23:31:22.6612903Z Download action repository 'actions/checkout@v4' (SHA:08eba0b27e820071cde6df949e0beb9ba4906955)
+2025-09-11T23:31:22.8451183Z Download action repository 'actions/setup-python@v5' (SHA:a26af69be951a213d495a4c3e4e4022e16d87065)
+2025-09-11T23:31:23.0617071Z Complete job name: unit_tests
+2025-09-11T23:31:23.1292401Z ##[group]Run actions/checkout@v4
+2025-09-11T23:31:23.1293267Z with:
+2025-09-11T23:31:23.1293709Z   repository: MainMuck/Ci.cdcompany
+2025-09-11T23:31:23.1294407Z   token: ***
+2025-09-11T23:31:23.1294916Z   ssh-strict: true
+2025-09-11T23:31:23.1295325Z   ssh-user: git
+2025-09-11T23:31:23.1295739Z   persist-credentials: true
+2025-09-11T23:31:23.1296199Z   clean: true
+2025-09-11T23:31:23.1296614Z   sparse-checkout-cone-mode: true
+2025-09-11T23:31:23.1297101Z   fetch-depth: 1
+2025-09-11T23:31:23.1297505Z   fetch-tags: false
+2025-09-11T23:31:23.1298119Z   show-progress: true
+2025-09-11T23:31:23.1298543Z   lfs: false
+2025-09-11T23:31:23.1298917Z   submodules: false
+2025-09-11T23:31:23.1299335Z   set-safe-directory: true
+2025-09-11T23:31:23.1300047Z ##[endgroup]
+2025-09-11T23:31:23.2443434Z Syncing repository: MainMuck/Ci.cdcompany
+2025-09-11T23:31:23.2445600Z ##[group]Getting Git version info
+2025-09-11T23:31:23.2446454Z Working directory is '/home/runner/work/Ci.cdcompany/Ci.cdcompany'
+2025-09-11T23:31:23.2448415Z [command]/usr/bin/git version
+2025-09-11T23:31:23.2539043Z git version 2.51.0
+2025-09-11T23:31:23.2547967Z ##[endgroup]
+2025-09-11T23:31:23.2563401Z Temporarily overriding HOME='/home/runner/work/_temp/c8bc7bdb-74cc-49a7-b5db-8d4445d77770' before making global git config changes
+2025-09-11T23:31:23.2567773Z Adding repository directory to the temporary git global config as a safe directory
+2025-09-11T23:31:23.2570575Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/Ci.cdcompany/Ci.cdcompany
+2025-09-11T23:31:23.2609297Z Deleting the contents of '/home/runner/work/Ci.cdcompany/Ci.cdcompany'
+2025-09-11T23:31:23.2614093Z ##[group]Initializing the repository
+2025-09-11T23:31:23.2619299Z [command]/usr/bin/git init /home/runner/work/Ci.cdcompany/Ci.cdcompany
+2025-09-11T23:31:23.2740504Z hint: Using 'master' as the name for the initial branch. This default branch name
+2025-09-11T23:31:23.2870978Z hint: is subject to change. To configure the initial branch name to use in all
+2025-09-11T23:31:23.2874201Z hint: of your new repositories, which will suppress this warning, call:
+2025-09-11T23:31:23.2875374Z hint:
+2025-09-11T23:31:23.2876445Z hint: 	git config --global init.defaultBranch <name>
+2025-09-11T23:31:23.2878037Z hint:
+2025-09-11T23:31:23.2879024Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2025-09-11T23:31:23.2880577Z hint: 'development'. The just-created branch can be renamed via this command:
+2025-09-11T23:31:23.2881790Z hint:
+2025-09-11T23:31:23.2882454Z hint: 	git branch -m <name>
+2025-09-11T23:31:23.2883301Z hint:
+2025-09-11T23:31:23.2884321Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2025-09-11T23:31:23.2886091Z Initialized empty Git repository in /home/runner/work/Ci.cdcompany/Ci.cdcompany/.git/
+2025-09-11T23:31:23.2889263Z [command]/usr/bin/git remote add origin https://github.com/MainMuck/Ci.cdcompany
+2025-09-11T23:31:23.2892088Z ##[endgroup]
+2025-09-11T23:31:23.2893316Z ##[group]Disabling automatic garbage collection
+2025-09-11T23:31:23.2894355Z [command]/usr/bin/git config --local gc.auto 0
+2025-09-11T23:31:23.2896899Z ##[endgroup]
+2025-09-11T23:31:23.2898458Z ##[group]Setting up auth
+2025-09-11T23:31:23.2900577Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2025-09-11T23:31:23.2908594Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2025-09-11T23:31:23.4146231Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2025-09-11T23:31:23.4154697Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2025-09-11T23:31:23.4160861Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2025-09-11T23:31:23.4163649Z ##[endgroup]
+2025-09-11T23:31:23.4164756Z ##[group]Fetching the repository
+2025-09-11T23:31:23.4166964Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +bbaa21cda10e46ef902f543d59d59b87f8929c6c:refs/remotes/pull/2/merge
+2025-09-11T23:31:23.7187231Z From https://github.com/MainMuck/Ci.cdcompany
+2025-09-11T23:31:23.7189037Z  * [new ref]         bbaa21cda10e46ef902f543d59d59b87f8929c6c -> pull/2/merge
+2025-09-11T23:31:23.7211346Z ##[endgroup]
+2025-09-11T23:31:23.7214119Z ##[group]Determining the checkout info
+2025-09-11T23:31:23.7215555Z ##[endgroup]
+2025-09-11T23:31:23.7218454Z [command]/usr/bin/git sparse-checkout disable
+2025-09-11T23:31:23.7263768Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2025-09-11T23:31:23.7298020Z ##[group]Checking out the ref
+2025-09-11T23:31:23.7300531Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/2/merge
+2025-09-11T23:31:23.7341994Z Note: switching to 'refs/remotes/pull/2/merge'.
+2025-09-11T23:31:23.7344226Z 
+2025-09-11T23:31:23.7344928Z You are in 'detached HEAD' state. You can look around, make experimental
+2025-09-11T23:31:23.7346563Z changes and commit them, and you can discard any commits you make in this
+2025-09-11T23:31:23.7348408Z state without impacting any branches by switching back to a branch.
+2025-09-11T23:31:23.7349377Z 
+2025-09-11T23:31:23.7350040Z If you want to create a new branch to retain commits you create, you may
+2025-09-11T23:31:23.7351658Z do so (now or later) by using -c with the switch command. Example:
+2025-09-11T23:31:23.7353150Z 
+2025-09-11T23:31:23.7353575Z   git switch -c <new-branch-name>
+2025-09-11T23:31:23.7354242Z 
+2025-09-11T23:31:23.7354616Z Or undo this operation with:
+2025-09-11T23:31:23.7355179Z 
+2025-09-11T23:31:23.7355508Z   git switch -
+2025-09-11T23:31:23.7355956Z 
+2025-09-11T23:31:23.7356660Z Turn off this advice by setting config variable advice.detachedHead to false
+2025-09-11T23:31:23.7358306Z 
+2025-09-11T23:31:23.7359590Z HEAD is now at bbaa21c Merge 6f7671b1bae1d23c67ffd8ee6dcb47a41e4c713e into b275aae4f74adcc13b8a8d1272453fba95169f9a
+2025-09-11T23:31:23.7363835Z ##[endgroup]
+2025-09-11T23:31:23.7395553Z [command]/usr/bin/git log -1 --format=%H
+2025-09-11T23:31:23.7418553Z bbaa21cda10e46ef902f543d59d59b87f8929c6c
+2025-09-11T23:31:23.7682181Z ##[group]Run actions/setup-python@v5
+2025-09-11T23:31:23.7682800Z with:
+2025-09-11T23:31:23.7683249Z   python-version: 3.12
+2025-09-11T23:31:23.7683740Z   check-latest: false
+2025-09-11T23:31:23.7684359Z   token: ***
+2025-09-11T23:31:23.7684803Z   update-environment: true
+2025-09-11T23:31:23.7685324Z   allow-prereleases: false
+2025-09-11T23:31:23.7685882Z   freethreaded: false
+2025-09-11T23:31:23.7686370Z ##[endgroup]
+2025-09-11T23:31:23.9480239Z ##[group]Installed versions
+2025-09-11T23:31:23.9965990Z Successfully set up CPython (3.12.11)
+2025-09-11T23:31:23.9969078Z ##[endgroup]
+2025-09-11T23:31:24.0102403Z ##[group]Run pip install -r requirements.txt pytest
+2025-09-11T23:31:24.0103248Z [36;1mpip install -r requirements.txt pytest[0m
+2025-09-11T23:31:24.0431149Z shell: /usr/bin/bash -e {0}
+2025-09-11T23:31:24.0431730Z env:
+2025-09-11T23:31:24.0432300Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.11/x64
+2025-09-11T23:31:24.0433205Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.11/x64/lib/pkgconfig
+2025-09-11T23:31:24.0434085Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.11/x64
+2025-09-11T23:31:24.0434877Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.11/x64
+2025-09-11T23:31:24.0435667Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.11/x64
+2025-09-11T23:31:24.0436456Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.11/x64/lib
+2025-09-11T23:31:24.0437129Z ##[endgroup]
+2025-09-11T23:31:28.6849167Z Collecting pytest
+2025-09-11T23:31:28.7210858Z   Downloading pytest-8.4.2-py3-none-any.whl.metadata (7.7 kB)
+2025-09-11T23:31:28.7709755Z Collecting fastapi==0.111.0 (from -r requirements.txt (line 1))
+2025-09-11T23:31:28.7753942Z   Downloading fastapi-0.111.0-py3-none-any.whl.metadata (25 kB)
+2025-09-11T23:31:28.8106068Z Collecting uvicorn==0.30.0 (from -r requirements.txt (line 2))
+2025-09-11T23:31:28.8165261Z   Downloading uvicorn-0.30.0-py3-none-any.whl.metadata (6.3 kB)
+2025-09-11T23:31:28.8470770Z Collecting starlette<0.38.0,>=0.37.2 (from fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:28.8507830Z   Downloading starlette-0.37.2-py3-none-any.whl.metadata (5.9 kB)
+2025-09-11T23:31:29.0234231Z Collecting pydantic!=1.8,!=1.8.1,!=2.0.0,!=2.0.1,!=2.1.0,<3.0.0,>=1.7.4 (from fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:29.0276185Z   Downloading pydantic-2.11.7-py3-none-any.whl.metadata (67 kB)
+2025-09-11T23:31:29.0526397Z Collecting typing-extensions>=4.8.0 (from fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:29.0574161Z   Downloading typing_extensions-4.15.0-py3-none-any.whl.metadata (3.3 kB)
+2025-09-11T23:31:29.0739878Z Collecting fastapi-cli>=0.0.2 (from fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:29.0784807Z   Downloading fastapi_cli-0.0.11-py3-none-any.whl.metadata (6.3 kB)
+2025-09-11T23:31:29.1005004Z Collecting httpx>=0.23.0 (from fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:29.1055774Z   Downloading httpx-0.28.1-py3-none-any.whl.metadata (7.1 kB)
+2025-09-11T23:31:29.1287178Z Collecting jinja2>=2.11.2 (from fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:29.1328037Z   Downloading jinja2-3.1.6-py3-none-any.whl.metadata (2.9 kB)
+2025-09-11T23:31:29.1462506Z Collecting python-multipart>=0.0.7 (from fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:29.1500748Z   Downloading python_multipart-0.0.20-py3-none-any.whl.metadata (1.8 kB)
+2025-09-11T23:31:29.2135635Z Collecting ujson!=4.0.2,!=4.1.0,!=4.2.0,!=4.3.0,!=5.0.0,!=5.1.0,>=4.0.1 (from fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:29.2186642Z   Downloading ujson-5.11.0-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl.metadata (9.4 kB)
+2025-09-11T23:31:29.4758712Z Collecting orjson>=3.2.1 (from fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:29.4801381Z   Downloading orjson-3.11.3-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (41 kB)
+2025-09-11T23:31:29.4976249Z Collecting email_validator>=2.0.0 (from fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:29.5010449Z   Downloading email_validator-2.3.0-py3-none-any.whl.metadata (26 kB)
+2025-09-11T23:31:29.5283365Z Collecting click>=7.0 (from uvicorn==0.30.0->-r requirements.txt (line 2))
+2025-09-11T23:31:29.5330213Z   Downloading click-8.2.1-py3-none-any.whl.metadata (2.5 kB)
+2025-09-11T23:31:29.5499498Z Collecting h11>=0.8 (from uvicorn==0.30.0->-r requirements.txt (line 2))
+2025-09-11T23:31:29.5535829Z   Downloading h11-0.16.0-py3-none-any.whl.metadata (8.3 kB)
+2025-09-11T23:31:29.5660089Z Collecting annotated-types>=0.6.0 (from pydantic!=1.8,!=1.8.1,!=2.0.0,!=2.0.1,!=2.1.0,<3.0.0,>=1.7.4->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:29.5694313Z   Downloading annotated_types-0.7.0-py3-none-any.whl.metadata (15 kB)
+2025-09-11T23:31:30.2274997Z Collecting pydantic-core==2.33.2 (from pydantic!=1.8,!=1.8.1,!=2.0.0,!=2.0.1,!=2.1.0,<3.0.0,>=1.7.4->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:30.2320768Z   Downloading pydantic_core-2.33.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (6.8 kB)
+2025-09-11T23:31:30.2481596Z Collecting typing-inspection>=0.4.0 (from pydantic!=1.8,!=1.8.1,!=2.0.0,!=2.0.1,!=2.1.0,<3.0.0,>=1.7.4->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:30.2521611Z   Downloading typing_inspection-0.4.1-py3-none-any.whl.metadata (2.6 kB)
+2025-09-11T23:31:30.2801603Z Collecting anyio<5,>=3.4.0 (from starlette<0.38.0,>=0.37.2->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:30.2841031Z   Downloading anyio-4.10.0-py3-none-any.whl.metadata (4.0 kB)
+2025-09-11T23:31:30.3015020Z Collecting idna>=2.8 (from anyio<5,>=3.4.0->starlette<0.38.0,>=0.37.2->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:30.3053277Z   Downloading idna-3.10-py3-none-any.whl.metadata (10 kB)
+2025-09-11T23:31:30.3193331Z Collecting sniffio>=1.1 (from anyio<5,>=3.4.0->starlette<0.38.0,>=0.37.2->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:30.3243589Z   Downloading sniffio-1.3.1-py3-none-any.whl.metadata (3.9 kB)
+2025-09-11T23:31:30.3403384Z Collecting iniconfig>=1 (from pytest)
+2025-09-11T23:31:30.3438740Z   Downloading iniconfig-2.1.0-py3-none-any.whl.metadata (2.7 kB)
+2025-09-11T23:31:30.3610694Z Collecting packaging>=20 (from pytest)
+2025-09-11T23:31:30.3646934Z   Downloading packaging-25.0-py3-none-any.whl.metadata (3.3 kB)
+2025-09-11T23:31:30.3773967Z Collecting pluggy<2,>=1.5 (from pytest)
+2025-09-11T23:31:30.3813654Z   Downloading pluggy-1.6.0-py3-none-any.whl.metadata (4.8 kB)
+2025-09-11T23:31:30.4056685Z Collecting pygments>=2.7.2 (from pytest)
+2025-09-11T23:31:30.4095385Z   Downloading pygments-2.19.2-py3-none-any.whl.metadata (2.5 kB)
+2025-09-11T23:31:30.4269107Z Collecting dnspython>=2.0.0 (from email_validator>=2.0.0->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:30.4307277Z   Downloading dnspython-2.8.0-py3-none-any.whl.metadata (5.7 kB)
+2025-09-11T23:31:30.4598769Z Collecting typer>=0.15.1 (from fastapi-cli>=0.0.2->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:30.4634490Z   Downloading typer-0.17.4-py3-none-any.whl.metadata (15 kB)
+2025-09-11T23:31:30.4911171Z Collecting rich-toolkit>=0.14.8 (from fastapi-cli>=0.0.2->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:30.4945953Z   Downloading rich_toolkit-0.15.1-py3-none-any.whl.metadata (1.0 kB)
+2025-09-11T23:31:30.5164034Z Collecting certifi (from httpx>=0.23.0->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:30.5211355Z   Downloading certifi-2025.8.3-py3-none-any.whl.metadata (2.4 kB)
+2025-09-11T23:31:30.5419979Z Collecting httpcore==1.* (from httpx>=0.23.0->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:30.5461198Z   Downloading httpcore-1.0.9-py3-none-any.whl.metadata (21 kB)
+2025-09-11T23:31:30.6071348Z Collecting MarkupSafe>=2.0 (from jinja2>=2.11.2->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:30.6117217Z   Downloading MarkupSafe-3.0.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.0 kB)
+2025-09-11T23:31:30.6608940Z Collecting rich>=13.7.1 (from rich-toolkit>=0.14.8->fastapi-cli>=0.0.2->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:30.6649501Z   Downloading rich-14.1.0-py3-none-any.whl.metadata (18 kB)
+2025-09-11T23:31:30.6892492Z Collecting markdown-it-py>=2.2.0 (from rich>=13.7.1->rich-toolkit>=0.14.8->fastapi-cli>=0.0.2->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:30.6931640Z   Downloading markdown_it_py-4.0.0-py3-none-any.whl.metadata (7.3 kB)
+2025-09-11T23:31:30.7189060Z Collecting mdurl~=0.1 (from markdown-it-py>=2.2.0->rich>=13.7.1->rich-toolkit>=0.14.8->fastapi-cli>=0.0.2->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:30.7225539Z   Downloading mdurl-0.1.2-py3-none-any.whl.metadata (1.6 kB)
+2025-09-11T23:31:30.7498608Z Collecting shellingham>=1.3.0 (from typer>=0.15.1->fastapi-cli>=0.0.2->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:30.7583120Z   Downloading shellingham-1.5.4-py2.py3-none-any.whl.metadata (3.5 kB)
+2025-09-11T23:31:30.8190008Z Collecting httptools>=0.5.0 (from uvicorn[standard]>=0.12.0->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:30.8230296Z   Downloading httptools-0.6.4-cp312-cp312-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (3.6 kB)
+2025-09-11T23:31:30.8410991Z Collecting python-dotenv>=0.13 (from uvicorn[standard]>=0.12.0->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:30.8446954Z   Downloading python_dotenv-1.1.1-py3-none-any.whl.metadata (24 kB)
+2025-09-11T23:31:30.9151912Z Collecting pyyaml>=5.1 (from uvicorn[standard]>=0.12.0->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:30.9192043Z   Downloading PyYAML-6.0.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (2.1 kB)
+2025-09-11T23:31:30.9576595Z Collecting uvloop!=0.15.0,!=0.15.1,>=0.14.0 (from uvicorn[standard]>=0.12.0->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:30.9627905Z   Downloading uvloop-0.21.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.9 kB)
+2025-09-11T23:31:31.0406428Z Collecting watchfiles>=0.13 (from uvicorn[standard]>=0.12.0->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:31.0448571Z   Downloading watchfiles-1.1.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.9 kB)
+2025-09-11T23:31:31.1343210Z Collecting websockets>=10.4 (from uvicorn[standard]>=0.12.0->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:31.1388776Z   Downloading websockets-15.0.1-cp312-cp312-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (6.8 kB)
+2025-09-11T23:31:31.1643663Z Downloading fastapi-0.111.0-py3-none-any.whl (91 kB)
+2025-09-11T23:31:31.1755619Z Downloading uvicorn-0.30.0-py3-none-any.whl (62 kB)
+2025-09-11T23:31:31.1826948Z Downloading pydantic-2.11.7-py3-none-any.whl (444 kB)
+2025-09-11T23:31:31.1922479Z Downloading pydantic_core-2.33.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.0 MB)
+2025-09-11T23:31:31.2089979Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.0/2.0 MB 129.5 MB/s  0:00:00
+2025-09-11T23:31:31.2150883Z Downloading starlette-0.37.2-py3-none-any.whl (71 kB)
+2025-09-11T23:31:31.2210817Z Downloading anyio-4.10.0-py3-none-any.whl (107 kB)
+2025-09-11T23:31:31.2277150Z Downloading pytest-8.4.2-py3-none-any.whl (365 kB)
+2025-09-11T23:31:31.2352466Z Downloading pluggy-1.6.0-py3-none-any.whl (20 kB)
+2025-09-11T23:31:31.2411880Z Downloading annotated_types-0.7.0-py3-none-any.whl (13 kB)
+2025-09-11T23:31:31.2475044Z Downloading click-8.2.1-py3-none-any.whl (102 kB)
+2025-09-11T23:31:31.2540370Z Downloading email_validator-2.3.0-py3-none-any.whl (35 kB)
+2025-09-11T23:31:31.2602743Z Downloading dnspython-2.8.0-py3-none-any.whl (331 kB)
+2025-09-11T23:31:31.2668848Z Downloading fastapi_cli-0.0.11-py3-none-any.whl (11 kB)
+2025-09-11T23:31:31.2733402Z Downloading h11-0.16.0-py3-none-any.whl (37 kB)
+2025-09-11T23:31:31.2789334Z Downloading httpx-0.28.1-py3-none-any.whl (73 kB)
+2025-09-11T23:31:31.2850846Z Downloading httpcore-1.0.9-py3-none-any.whl (78 kB)
+2025-09-11T23:31:31.2908537Z Downloading idna-3.10-py3-none-any.whl (70 kB)
+2025-09-11T23:31:31.2972960Z Downloading iniconfig-2.1.0-py3-none-any.whl (6.0 kB)
+2025-09-11T23:31:31.3034029Z Downloading jinja2-3.1.6-py3-none-any.whl (134 kB)
+2025-09-11T23:31:31.3098840Z Downloading MarkupSafe-3.0.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (23 kB)
+2025-09-11T23:31:31.3208773Z Downloading orjson-3.11.3-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (132 kB)
+2025-09-11T23:31:31.3266065Z Downloading packaging-25.0-py3-none-any.whl (66 kB)
+2025-09-11T23:31:31.3326598Z Downloading pygments-2.19.2-py3-none-any.whl (1.2 MB)
+2025-09-11T23:31:31.3419493Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.2/1.2 MB 149.0 MB/s  0:00:00
+2025-09-11T23:31:31.3456467Z Downloading python_multipart-0.0.20-py3-none-any.whl (24 kB)
+2025-09-11T23:31:31.3515768Z Downloading rich_toolkit-0.15.1-py3-none-any.whl (29 kB)
+2025-09-11T23:31:31.3573162Z Downloading rich-14.1.0-py3-none-any.whl (243 kB)
+2025-09-11T23:31:31.3639522Z Downloading markdown_it_py-4.0.0-py3-none-any.whl (87 kB)
+2025-09-11T23:31:31.3696941Z Downloading mdurl-0.1.2-py3-none-any.whl (10.0 kB)
+2025-09-11T23:31:31.3751496Z Downloading sniffio-1.3.1-py3-none-any.whl (10 kB)
+2025-09-11T23:31:31.3805563Z Downloading typer-0.17.4-py3-none-any.whl (46 kB)
+2025-09-11T23:31:31.3864736Z Downloading shellingham-1.5.4-py2.py3-none-any.whl (9.8 kB)
+2025-09-11T23:31:31.3930576Z Downloading typing_extensions-4.15.0-py3-none-any.whl (44 kB)
+2025-09-11T23:31:31.3990352Z Downloading typing_inspection-0.4.1-py3-none-any.whl (14 kB)
+2025-09-11T23:31:31.4044674Z Downloading ujson-5.11.0-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (57 kB)
+2025-09-11T23:31:31.4110389Z Downloading httptools-0.6.4-cp312-cp312-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl (510 kB)
+2025-09-11T23:31:31.4185332Z Downloading python_dotenv-1.1.1-py3-none-any.whl (20 kB)
+2025-09-11T23:31:31.4280071Z Downloading PyYAML-6.0.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (767 kB)
+2025-09-11T23:31:31.4349293Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 767.5/767.5 kB 117.1 MB/s  0:00:00
+2025-09-11T23:31:31.4389535Z Downloading uvloop-0.21.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (4.7 MB)
+2025-09-11T23:31:31.4625044Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.7/4.7 MB 216.4 MB/s  0:00:00
+2025-09-11T23:31:31.4669280Z Downloading watchfiles-1.1.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (452 kB)
+2025-09-11T23:31:31.4761881Z Downloading websockets-15.0.1-cp312-cp312-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl (182 kB)
+2025-09-11T23:31:31.4825521Z Downloading certifi-2025.8.3-py3-none-any.whl (161 kB)
+2025-09-11T23:31:31.6106420Z Installing collected packages: websockets, uvloop, ujson, typing-extensions, sniffio, shellingham, pyyaml, python-multipart, python-dotenv, pygments, pluggy, packaging, orjson, mdurl, MarkupSafe, iniconfig, idna, httptools, h11, dnspython, click, certifi, annotated-types, uvicorn, typing-inspection, pytest, pydantic-core, markdown-it-py, jinja2, httpcore, email_validator, anyio, watchfiles, starlette, rich, pydantic, httpx, typer, rich-toolkit, fastapi-cli, fastapi
+2025-09-11T23:31:34.6153701Z 
+2025-09-11T23:31:34.6199007Z Successfully installed MarkupSafe-3.0.2 annotated-types-0.7.0 anyio-4.10.0 certifi-2025.8.3 click-8.2.1 dnspython-2.8.0 email_validator-2.3.0 fastapi-0.111.0 fastapi-cli-0.0.11 h11-0.16.0 httpcore-1.0.9 httptools-0.6.4 httpx-0.28.1 idna-3.10 iniconfig-2.1.0 jinja2-3.1.6 markdown-it-py-4.0.0 mdurl-0.1.2 orjson-3.11.3 packaging-25.0 pluggy-1.6.0 pydantic-2.11.7 pydantic-core-2.33.2 pygments-2.19.2 pytest-8.4.2 python-dotenv-1.1.1 python-multipart-0.0.20 pyyaml-6.0.2 rich-14.1.0 rich-toolkit-0.15.1 shellingham-1.5.4 sniffio-1.3.1 starlette-0.37.2 typer-0.17.4 typing-extensions-4.15.0 typing-inspection-0.4.1 ujson-5.11.0 uvicorn-0.30.0 uvloop-0.21.0 watchfiles-1.1.0 websockets-15.0.1
+2025-09-11T23:31:34.9340263Z ##[group]Run python -m pytest -q
+2025-09-11T23:31:34.9340579Z [36;1mpython -m pytest -q[0m
+2025-09-11T23:31:34.9373296Z shell: /usr/bin/bash -e {0}
+2025-09-11T23:31:34.9373535Z env:
+2025-09-11T23:31:34.9373794Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.11/x64
+2025-09-11T23:31:34.9374211Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.11/x64/lib/pkgconfig
+2025-09-11T23:31:34.9374624Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.11/x64
+2025-09-11T23:31:34.9375214Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.11/x64
+2025-09-11T23:31:34.9375577Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.11/x64
+2025-09-11T23:31:34.9375920Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.11/x64/lib
+2025-09-11T23:31:34.9376272Z   PYTHONPATH: /home/runner/work/Ci.cdcompany/Ci.cdcompany
+2025-09-11T23:31:34.9376573Z   APP_VERSION: dev
+2025-09-11T23:31:34.9376761Z ##[endgroup]
+2025-09-11T23:31:36.6137747Z ..                                                                       [100%]
+2025-09-11T23:31:36.6138615Z =============================== warnings summary ===============================
+2025-09-11T23:31:36.6139436Z ../../../../../opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/starlette/formparsers.py:12
+2025-09-11T23:31:36.6140990Z   /opt/hostedtoolcache/Python/3.12.11/x64/lib/python3.12/site-packages/starlette/formparsers.py:12: PendingDeprecationWarning: Please use `import python_multipart` instead.
+2025-09-11T23:31:36.6142148Z     import multipart
+2025-09-11T23:31:36.6142356Z 
+2025-09-11T23:31:36.6142676Z -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+2025-09-11T23:31:36.6143288Z 2 passed, 1 warning in 0.52s
+2025-09-11T23:31:36.6735709Z Post job cleanup.
+2025-09-11T23:31:36.8432644Z Post job cleanup.
+2025-09-11T23:31:36.9386517Z [command]/usr/bin/git version
+2025-09-11T23:31:36.9427167Z git version 2.51.0
+2025-09-11T23:31:36.9484364Z Temporarily overriding HOME='/home/runner/work/_temp/a847f0af-f3a4-4bf4-8b6b-235428488d57' before making global git config changes
+2025-09-11T23:31:36.9487898Z Adding repository directory to the temporary git global config as a safe directory
+2025-09-11T23:31:36.9492220Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/Ci.cdcompany/Ci.cdcompany
+2025-09-11T23:31:36.9528157Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2025-09-11T23:31:36.9564693Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2025-09-11T23:31:36.9814416Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2025-09-11T23:31:36.9840264Z http.https://github.com/.extraheader
+2025-09-11T23:31:36.9855070Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2025-09-11T23:31:36.9891762Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2025-09-11T23:31:37.0249709Z Cleaning up orphan processes

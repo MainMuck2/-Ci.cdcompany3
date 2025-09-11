@@ -1,0 +1,485 @@
+{
+  "total_count": 4,
+  "jobs": [
+    {
+      "id": 50191200282,
+      "run_id": 17659945942,
+      "workflow_name": "C1-M1-L1 | build, sign, checksums, verify (warn)",
+      "head_branch": "feat/c1-m1-l1",
+      "run_url": "https://api.github.com/repos/MainMuck/Ci.cdcompany/actions/runs/17659945942",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPuQVUs8AAAALr6DwGg",
+      "head_sha": "6f7671b1bae1d23c67ffd8ee6dcb47a41e4c713e",
+      "url": "https://api.github.com/repos/MainMuck/Ci.cdcompany/actions/jobs/50191200282",
+      "html_url": "https://github.com/MainMuck/Ci.cdcompany/actions/runs/17659945942/job/50191200282",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2025-09-11T23:31:18Z",
+      "started_at": "2025-09-11T23:31:21Z",
+      "completed_at": "2025-09-11T23:31:39Z",
+      "name": "unit_tests",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2025-09-11T23:31:22Z",
+          "completed_at": "2025-09-11T23:31:23Z"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2025-09-11T23:31:23Z",
+          "completed_at": "2025-09-11T23:31:23Z"
+        },
+        {
+          "name": "Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2025-09-11T23:31:23Z",
+          "completed_at": "2025-09-11T23:31:24Z"
+        },
+        {
+          "name": "Run pip install -r requirements.txt pytest",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2025-09-11T23:31:24Z",
+          "completed_at": "2025-09-11T23:31:34Z"
+        },
+        {
+          "name": "Run unit tests (К1–М1–Л1 infra)",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2025-09-11T23:31:34Z",
+          "completed_at": "2025-09-11T23:31:36Z"
+        },
+        {
+          "name": "Post Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2025-09-11T23:31:36Z",
+          "completed_at": "2025-09-11T23:31:36Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2025-09-11T23:31:36Z",
+          "completed_at": "2025-09-11T23:31:37Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2025-09-11T23:31:37Z",
+          "completed_at": "2025-09-11T23:31:37Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/MainMuck/Ci.cdcompany/check-runs/50191200282",
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "runner_id": 1000000021,
+      "runner_name": "GitHub Actions 1000000021",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "id": 50191216719,
+      "run_id": 17659945942,
+      "workflow_name": "C1-M1-L1 | build, sign, checksums, verify (warn)",
+      "head_branch": "feat/c1-m1-l1",
+      "run_url": "https://api.github.com/repos/MainMuck/Ci.cdcompany/actions/runs/17659945942",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPuQVUs8AAAALr6EwTw",
+      "head_sha": "6f7671b1bae1d23c67ffd8ee6dcb47a41e4c713e",
+      "url": "https://api.github.com/repos/MainMuck/Ci.cdcompany/actions/jobs/50191216719",
+      "html_url": "https://github.com/MainMuck/Ci.cdcompany/actions/runs/17659945942/job/50191216719",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2025-09-11T23:31:39Z",
+      "started_at": "2025-09-11T23:31:41Z",
+      "completed_at": "2025-09-11T23:32:20Z",
+      "name": "build_and_sign",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2025-09-11T23:31:42Z",
+          "completed_at": "2025-09-11T23:31:45Z"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2025-09-11T23:31:45Z",
+          "completed_at": "2025-09-11T23:31:45Z"
+        },
+        {
+          "name": "Compute IMAGE (auto, lowercase) [К1][М1][Л1]",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2025-09-11T23:31:45Z",
+          "completed_at": "2025-09-11T23:31:45Z"
+        },
+        {
+          "name": "Login to GHCR [К1][М1][Л1]",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2025-09-11T23:31:45Z",
+          "completed_at": "2025-09-11T23:31:46Z"
+        },
+        {
+          "name": "Set up Buildx [К1][М1][Л1]",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2025-09-11T23:31:46Z",
+          "completed_at": "2025-09-11T23:31:52Z"
+        },
+        {
+          "name": "Build and push image (tagged) [К1][М1][Л1]",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2025-09-11T23:31:52Z",
+          "completed_at": "2025-09-11T23:32:09Z"
+        },
+        {
+          "name": "Compute image ref [К1][М1][Л1]",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2025-09-11T23:32:09Z",
+          "completed_at": "2025-09-11T23:32:09Z"
+        },
+        {
+          "name": "Install cosign [К1][М1][Л1]",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2025-09-11T23:32:09Z",
+          "completed_at": "2025-09-11T23:32:09Z"
+        },
+        {
+          "name": "Keyless sign image (Fulcio/Rekor) [К1][М1][Л1]",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2025-09-11T23:32:09Z",
+          "completed_at": "2025-09-11T23:32:13Z"
+        },
+        {
+          "name": "Create minimal provenance predicate [К1][М1][Л1]",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2025-09-11T23:32:13Z",
+          "completed_at": "2025-09-11T23:32:13Z"
+        },
+        {
+          "name": "Generate SBOM (CycloneDX) [К1][М1][Л1]",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2025-09-11T23:32:13Z",
+          "completed_at": "2025-09-11T23:32:15Z"
+        },
+        {
+          "name": "Generate checksums & digest list [К1][М1][Л1]",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2025-09-11T23:32:15Z",
+          "completed_at": "2025-09-11T23:32:15Z"
+        },
+        {
+          "name": "Upload checksums & related artifacts [К1][М1][Л1]",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13,
+          "started_at": "2025-09-11T23:32:15Z",
+          "completed_at": "2025-09-11T23:32:16Z"
+        },
+        {
+          "name": "Post Build and push image (tagged) [К1][М1][Л1]",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 23,
+          "started_at": "2025-09-11T23:32:16Z",
+          "completed_at": "2025-09-11T23:32:17Z"
+        },
+        {
+          "name": "Post Set up Buildx [К1][М1][Л1]",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 24,
+          "started_at": "2025-09-11T23:32:17Z",
+          "completed_at": "2025-09-11T23:32:18Z"
+        },
+        {
+          "name": "Post Login to GHCR [К1][М1][Л1]",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 25,
+          "started_at": "2025-09-11T23:32:18Z",
+          "completed_at": "2025-09-11T23:32:19Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 26,
+          "started_at": "2025-09-11T23:32:19Z",
+          "completed_at": "2025-09-11T23:32:19Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 27,
+          "started_at": "2025-09-11T23:32:19Z",
+          "completed_at": "2025-09-11T23:32:19Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/MainMuck/Ci.cdcompany/check-runs/50191216719",
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "runner_id": 1000000022,
+      "runner_name": "GitHub Actions 1000000022",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "id": 50191247752,
+      "run_id": 17659945942,
+      "workflow_name": "C1-M1-L1 | build, sign, checksums, verify (warn)",
+      "head_branch": "feat/c1-m1-l1",
+      "run_url": "https://api.github.com/repos/MainMuck/Ci.cdcompany/actions/runs/17659945942",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPuQVUs8AAAALr6GpiA",
+      "head_sha": "6f7671b1bae1d23c67ffd8ee6dcb47a41e4c713e",
+      "url": "https://api.github.com/repos/MainMuck/Ci.cdcompany/actions/jobs/50191247752",
+      "html_url": "https://github.com/MainMuck/Ci.cdcompany/actions/runs/17659945942/job/50191247752",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2025-09-11T23:32:21Z",
+      "started_at": "2025-09-11T23:32:23Z",
+      "completed_at": "2025-09-11T23:32:31Z",
+      "name": "verify_non_blocking",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2025-09-11T23:32:24Z",
+          "completed_at": "2025-09-11T23:32:25Z"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2025-09-11T23:32:25Z",
+          "completed_at": "2025-09-11T23:32:26Z"
+        },
+        {
+          "name": "Download checks artifacts [К1][М1][Л1]",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2025-09-11T23:32:26Z",
+          "completed_at": "2025-09-11T23:32:27Z"
+        },
+        {
+          "name": "Run sigstore/cosign-installer@v3",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2025-09-11T23:32:27Z",
+          "completed_at": "2025-09-11T23:32:28Z"
+        },
+        {
+          "name": "Compute local trust-store (auto) [К1][М1][Л1]",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2025-09-11T23:32:28Z",
+          "completed_at": "2025-09-11T23:32:28Z"
+        },
+        {
+          "name": "Verify signature (WARN-only, pinned identity) [К1][М1][Л1]",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2025-09-11T23:32:28Z",
+          "completed_at": "2025-09-11T23:32:29Z"
+        },
+        {
+          "name": "Verify checksums (WARN-only) [К1][М1][Л1]",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2025-09-11T23:32:29Z",
+          "completed_at": "2025-09-11T23:32:29Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2025-09-11T23:32:29Z",
+          "completed_at": "2025-09-11T23:32:29Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15,
+          "started_at": "2025-09-11T23:32:29Z",
+          "completed_at": "2025-09-11T23:32:29Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/MainMuck/Ci.cdcompany/check-runs/50191247752",
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "runner_id": 1000000023,
+      "runner_name": "GitHub Actions 1000000023",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "id": 50191255024,
+      "run_id": 17659945942,
+      "workflow_name": "C1-M1-L1 | build, sign, checksums, verify (warn)",
+      "head_branch": "feat/c1-m1-l1",
+      "run_url": "https://api.github.com/repos/MainMuck/Ci.cdcompany/actions/runs/17659945942",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOPuQVUs8AAAALr6HF8A",
+      "head_sha": "6f7671b1bae1d23c67ffd8ee6dcb47a41e4c713e",
+      "url": "https://api.github.com/repos/MainMuck/Ci.cdcompany/actions/jobs/50191255024",
+      "html_url": "https://github.com/MainMuck/Ci.cdcompany/actions/runs/17659945942/job/50191255024",
+      "status": "in_progress",
+      "conclusion": null,
+      "created_at": "2025-09-11T23:32:31Z",
+      "started_at": "2025-09-11T23:32:37Z",
+      "completed_at": null,
+      "name": "persist_evidence",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2025-09-11T23:32:39Z",
+          "completed_at": "2025-09-11T23:32:40Z"
+        },
+        {
+          "name": "Checkout default branch [INFRA][EVIDENCE]",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2025-09-11T23:32:40Z",
+          "completed_at": "2025-09-11T23:32:40Z"
+        },
+        {
+          "name": "Switch/Create evidence branch [INFRA][EVIDENCE]",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2025-09-11T23:32:40Z",
+          "completed_at": "2025-09-11T23:32:40Z"
+        },
+        {
+          "name": "Prepare destination [INFRA][EVIDENCE]",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2025-09-11T23:32:40Z",
+          "completed_at": "2025-09-11T23:32:40Z"
+        },
+        {
+          "name": "Download job logs (ZIP per job) [INFRA][EVIDENCE]",
+          "status": "in_progress",
+          "conclusion": null,
+          "number": 5,
+          "started_at": "2025-09-11T23:32:40Z",
+          "completed_at": null
+        },
+        {
+          "name": "Download whole run logs (single ZIP) [INFRA][EVIDENCE]",
+          "status": "pending",
+          "conclusion": null,
+          "number": 6,
+          "started_at": null,
+          "completed_at": null
+        },
+        {
+          "name": "Download artifact c1-m1-l1-checks [К1][М1][Л1][EVIDENCE]",
+          "status": "pending",
+          "conclusion": null,
+          "number": 7,
+          "started_at": null,
+          "completed_at": null
+        },
+        {
+          "name": "Snapshot workflow file [INFRA][EVIDENCE]",
+          "status": "pending",
+          "conclusion": null,
+          "number": 8,
+          "started_at": null,
+          "completed_at": null
+        },
+        {
+          "name": "Write metadata (README) [INFRA][EVIDENCE]",
+          "status": "pending",
+          "conclusion": null,
+          "number": 9,
+          "started_at": null,
+          "completed_at": null
+        },
+        {
+          "name": "Commit & push to evidence [INFRA][EVIDENCE]",
+          "status": "pending",
+          "conclusion": null,
+          "number": 10,
+          "started_at": null,
+          "completed_at": null
+        },
+        {
+          "name": "Post Checkout default branch [INFRA][EVIDENCE]",
+          "status": "pending",
+          "conclusion": null,
+          "number": 20,
+          "started_at": null,
+          "completed_at": null
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/MainMuck/Ci.cdcompany/check-runs/50191255024",
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "runner_id": 1000000024,
+      "runner_name": "GitHub Actions 1000000024",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    }
+  ]
+}

@@ -1,0 +1,1214 @@
+﻿2025-09-11T23:31:42.6928491Z Current runner version: '2.328.0'
+2025-09-11T23:31:42.6959289Z ##[group]Runner Image Provisioner
+2025-09-11T23:31:42.6960509Z Hosted Compute Agent
+2025-09-11T23:31:42.6961520Z Version: 20250829.383
+2025-09-11T23:31:42.6962647Z Commit: 27cb235aab5b0e52e153a26cd86b4742e89dac5d
+2025-09-11T23:31:42.6963997Z Build Date: 2025-08-29T13:48:48Z
+2025-09-11T23:31:42.6965187Z ##[endgroup]
+2025-09-11T23:31:42.6966132Z ##[group]Operating System
+2025-09-11T23:31:42.6967048Z Ubuntu
+2025-09-11T23:31:42.6967797Z 24.04.3
+2025-09-11T23:31:42.6968728Z LTS
+2025-09-11T23:31:42.6969584Z ##[endgroup]
+2025-09-11T23:31:42.6970480Z ##[group]Runner Image
+2025-09-11T23:31:42.6971366Z Image: ubuntu-24.04
+2025-09-11T23:31:42.6972503Z Version: 20250907.24.1
+2025-09-11T23:31:42.6974505Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20250907.24/images/ubuntu/Ubuntu2404-Readme.md
+2025-09-11T23:31:42.6977522Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20250907.24
+2025-09-11T23:31:42.6979233Z ##[endgroup]
+2025-09-11T23:31:42.6981305Z ##[group]GITHUB_TOKEN Permissions
+2025-09-11T23:31:42.6984527Z Contents: read
+2025-09-11T23:31:42.6985619Z Metadata: read
+2025-09-11T23:31:42.6986431Z Packages: write
+2025-09-11T23:31:42.6987235Z ##[endgroup]
+2025-09-11T23:31:42.6990064Z Secret source: Actions
+2025-09-11T23:31:42.6991540Z Prepare workflow directory
+2025-09-11T23:31:42.7468062Z Prepare all required actions
+2025-09-11T23:31:42.7523616Z Getting action download info
+2025-09-11T23:31:43.1615693Z Download action repository 'actions/checkout@v4' (SHA:08eba0b27e820071cde6df949e0beb9ba4906955)
+2025-09-11T23:31:43.2503834Z Download action repository 'docker/login-action@v3' (SHA:184bdaa0721073962dff0199f1fb9940f07167d1)
+2025-09-11T23:31:43.6383336Z Download action repository 'docker/setup-buildx-action@v3' (SHA:e468171a9de216ec08956ac3ada2f0791b6bd435)
+2025-09-11T23:31:43.9605866Z Download action repository 'docker/build-push-action@v6' (SHA:263435318d21b8e681c14492fe198d362a7d2c83)
+2025-09-11T23:31:44.3065695Z Download action repository 'sigstore/cosign-installer@v3' (SHA:398d4b0eeef1380460a10c8013a76f728fb906ac)
+2025-09-11T23:31:44.4562792Z Download action repository 'anchore/sbom-action@v0' (SHA:da167eac915b4e86f08b264dbdbc867b61be6f0c)
+2025-09-11T23:31:44.8257657Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+2025-09-11T23:31:45.1743646Z Complete job name: build_and_sign
+2025-09-11T23:31:45.2576937Z ##[group]Run actions/checkout@v4
+2025-09-11T23:31:45.2578107Z with:
+2025-09-11T23:31:45.2578711Z   repository: MainMuck/Ci.cdcompany
+2025-09-11T23:31:45.2579763Z   token: ***
+2025-09-11T23:31:45.2580333Z   ssh-strict: true
+2025-09-11T23:31:45.2580942Z   ssh-user: git
+2025-09-11T23:31:45.2581576Z   persist-credentials: true
+2025-09-11T23:31:45.2582279Z   clean: true
+2025-09-11T23:31:45.2582908Z   sparse-checkout-cone-mode: true
+2025-09-11T23:31:45.2583690Z   fetch-depth: 1
+2025-09-11T23:31:45.2584652Z   fetch-tags: false
+2025-09-11T23:31:45.2585290Z   show-progress: true
+2025-09-11T23:31:45.2585948Z   lfs: false
+2025-09-11T23:31:45.2586535Z   submodules: false
+2025-09-11T23:31:45.2587160Z   set-safe-directory: true
+2025-09-11T23:31:45.2588462Z ##[endgroup]
+2025-09-11T23:31:45.3778730Z Syncing repository: MainMuck/Ci.cdcompany
+2025-09-11T23:31:45.3782393Z ##[group]Getting Git version info
+2025-09-11T23:31:45.3784466Z Working directory is '/home/runner/work/Ci.cdcompany/Ci.cdcompany'
+2025-09-11T23:31:45.3787042Z [command]/usr/bin/git version
+2025-09-11T23:31:45.3847640Z git version 2.51.0
+2025-09-11T23:31:45.3888253Z ##[endgroup]
+2025-09-11T23:31:45.3899574Z Temporarily overriding HOME='/home/runner/work/_temp/e4d170e8-81ce-425a-889c-6d608e68b95e' before making global git config changes
+2025-09-11T23:31:45.3905836Z Adding repository directory to the temporary git global config as a safe directory
+2025-09-11T23:31:45.3908993Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/Ci.cdcompany/Ci.cdcompany
+2025-09-11T23:31:45.3943613Z Deleting the contents of '/home/runner/work/Ci.cdcompany/Ci.cdcompany'
+2025-09-11T23:31:45.3949309Z ##[group]Initializing the repository
+2025-09-11T23:31:45.3953847Z [command]/usr/bin/git init /home/runner/work/Ci.cdcompany/Ci.cdcompany
+2025-09-11T23:31:45.4037492Z hint: Using 'master' as the name for the initial branch. This default branch name
+2025-09-11T23:31:45.4040162Z hint: is subject to change. To configure the initial branch name to use in all
+2025-09-11T23:31:45.4042764Z hint: of your new repositories, which will suppress this warning, call:
+2025-09-11T23:31:45.4044862Z hint:
+2025-09-11T23:31:45.4046079Z hint: 	git config --global init.defaultBranch <name>
+2025-09-11T23:31:45.4047719Z hint:
+2025-09-11T23:31:45.4049222Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2025-09-11T23:31:45.4051863Z hint: 'development'. The just-created branch can be renamed via this command:
+2025-09-11T23:31:45.4053886Z hint:
+2025-09-11T23:31:45.4055088Z hint: 	git branch -m <name>
+2025-09-11T23:31:45.4056588Z hint:
+2025-09-11T23:31:45.4058664Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2025-09-11T23:31:45.4061698Z Initialized empty Git repository in /home/runner/work/Ci.cdcompany/Ci.cdcompany/.git/
+2025-09-11T23:31:45.4066561Z [command]/usr/bin/git remote add origin https://github.com/MainMuck/Ci.cdcompany
+2025-09-11T23:31:45.4104709Z ##[endgroup]
+2025-09-11T23:31:45.4110185Z ##[group]Disabling automatic garbage collection
+2025-09-11T23:31:45.4111874Z [command]/usr/bin/git config --local gc.auto 0
+2025-09-11T23:31:45.4138905Z ##[endgroup]
+2025-09-11T23:31:45.4140661Z ##[group]Setting up auth
+2025-09-11T23:31:45.4146214Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2025-09-11T23:31:45.4182048Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2025-09-11T23:31:45.4503915Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2025-09-11T23:31:45.4540285Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2025-09-11T23:31:45.4786321Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2025-09-11T23:31:45.4822466Z ##[endgroup]
+2025-09-11T23:31:45.4825283Z ##[group]Fetching the repository
+2025-09-11T23:31:45.4835917Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +bbaa21cda10e46ef902f543d59d59b87f8929c6c:refs/remotes/pull/2/merge
+2025-09-11T23:31:45.8283220Z From https://github.com/MainMuck/Ci.cdcompany
+2025-09-11T23:31:45.8306840Z  * [new ref]         bbaa21cda10e46ef902f543d59d59b87f8929c6c -> pull/2/merge
+2025-09-11T23:31:45.8311924Z ##[endgroup]
+2025-09-11T23:31:45.8313761Z ##[group]Determining the checkout info
+2025-09-11T23:31:45.8316051Z ##[endgroup]
+2025-09-11T23:31:45.8317197Z [command]/usr/bin/git sparse-checkout disable
+2025-09-11T23:31:45.8320722Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2025-09-11T23:31:45.8325207Z ##[group]Checking out the ref
+2025-09-11T23:31:45.8328121Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/2/merge
+2025-09-11T23:31:45.8357461Z Note: switching to 'refs/remotes/pull/2/merge'.
+2025-09-11T23:31:45.8360236Z 
+2025-09-11T23:31:45.8361986Z You are in 'detached HEAD' state. You can look around, make experimental
+2025-09-11T23:31:45.8366804Z changes and commit them, and you can discard any commits you make in this
+2025-09-11T23:31:45.8370073Z state without impacting any branches by switching back to a branch.
+2025-09-11T23:31:45.8371597Z 
+2025-09-11T23:31:45.8372551Z If you want to create a new branch to retain commits you create, you may
+2025-09-11T23:31:45.8375244Z do so (now or later) by using -c with the switch command. Example:
+2025-09-11T23:31:45.8376899Z 
+2025-09-11T23:31:45.8377407Z   git switch -c <new-branch-name>
+2025-09-11T23:31:45.8378308Z 
+2025-09-11T23:31:45.8378774Z Or undo this operation with:
+2025-09-11T23:31:45.8379579Z 
+2025-09-11T23:31:45.8380668Z   git switch -
+2025-09-11T23:31:45.8381353Z 
+2025-09-11T23:31:45.8382377Z Turn off this advice by setting config variable advice.detachedHead to false
+2025-09-11T23:31:45.8384017Z 
+2025-09-11T23:31:45.8386217Z HEAD is now at bbaa21c Merge 6f7671b1bae1d23c67ffd8ee6dcb47a41e4c713e into b275aae4f74adcc13b8a8d1272453fba95169f9a
+2025-09-11T23:31:45.8392947Z ##[endgroup]
+2025-09-11T23:31:45.8414493Z [command]/usr/bin/git log -1 --format=%H
+2025-09-11T23:31:45.8540927Z bbaa21cda10e46ef902f543d59d59b87f8929c6c
+2025-09-11T23:31:45.8757592Z ##[group]Run echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+2025-09-11T23:31:45.8760352Z [36;1mecho "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"[0m
+2025-09-11T23:31:45.8836785Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2025-09-11T23:31:45.8838632Z ##[endgroup]
+2025-09-11T23:31:45.9273463Z ##[group]Run docker/login-action@v3
+2025-09-11T23:31:45.9274538Z with:
+2025-09-11T23:31:45.9275114Z   registry: ghcr.io
+2025-09-11T23:31:45.9275765Z   username: JONMacduck
+2025-09-11T23:31:45.9276755Z   password: ***
+2025-09-11T23:31:45.9277370Z   ecr: auto
+2025-09-11T23:31:45.9277947Z   logout: true
+2025-09-11T23:31:45.9278537Z ##[endgroup]
+2025-09-11T23:31:46.3611613Z Logging into ghcr.io...
+2025-09-11T23:31:46.5762497Z Login Succeeded!
+2025-09-11T23:31:46.5985726Z ##[group]Run docker/setup-buildx-action@v3
+2025-09-11T23:31:46.5986617Z with:
+2025-09-11T23:31:46.5987198Z   driver: docker-container
+2025-09-11T23:31:46.5987910Z   install: false
+2025-09-11T23:31:46.5988504Z   use: true
+2025-09-11T23:31:46.5989083Z   keep-state: false
+2025-09-11T23:31:46.5989705Z   cache-binary: true
+2025-09-11T23:31:46.5990348Z   cleanup: true
+2025-09-11T23:31:46.5990940Z ##[endgroup]
+2025-09-11T23:31:46.9838891Z ##[group]Docker info
+2025-09-11T23:31:46.9840449Z [command]/usr/bin/docker version
+2025-09-11T23:31:46.9952381Z Client: Docker Engine - Community
+2025-09-11T23:31:46.9953925Z  Version:           28.0.4
+2025-09-11T23:31:46.9956915Z  API version:       1.48
+2025-09-11T23:31:46.9957795Z  Go version:        go1.23.7
+2025-09-11T23:31:46.9958669Z  Git commit:        b8034c0
+2025-09-11T23:31:46.9959538Z  Built:             Tue Mar 25 15:07:16 2025
+2025-09-11T23:31:46.9960548Z  OS/Arch:           linux/amd64
+2025-09-11T23:31:46.9961486Z  Context:           default
+2025-09-11T23:31:46.9962036Z 
+2025-09-11T23:31:46.9962377Z Server: Docker Engine - Community
+2025-09-11T23:31:46.9963302Z  Engine:
+2025-09-11T23:31:46.9963962Z   Version:          28.0.4
+2025-09-11T23:31:46.9965307Z   API version:      1.48 (minimum version 1.24)
+2025-09-11T23:31:46.9966388Z   Go version:       go1.23.7
+2025-09-11T23:31:46.9967236Z   Git commit:       6430e49
+2025-09-11T23:31:46.9968191Z   Built:            Tue Mar 25 15:07:16 2025
+2025-09-11T23:31:46.9969288Z   OS/Arch:          linux/amd64
+2025-09-11T23:31:46.9970248Z   Experimental:     false
+2025-09-11T23:31:46.9971095Z  containerd:
+2025-09-11T23:31:46.9971818Z   Version:          1.7.27
+2025-09-11T23:31:46.9972956Z   GitCommit:        05044ec0a9a75232cad458027ca83437aae3f4da
+2025-09-11T23:31:46.9974448Z  runc:
+2025-09-11T23:31:46.9975165Z   Version:          1.2.5
+2025-09-11T23:31:46.9976095Z   GitCommit:        v1.2.5-0-g59923ef
+2025-09-11T23:31:46.9977128Z  docker-init:
+2025-09-11T23:31:46.9977888Z   Version:          0.19.0
+2025-09-11T23:31:46.9978811Z   GitCommit:        de40ad0
+2025-09-11T23:31:47.0014832Z [command]/usr/bin/docker info
+2025-09-11T23:31:47.2197869Z Client: Docker Engine - Community
+2025-09-11T23:31:47.2200981Z  Version:    28.0.4
+2025-09-11T23:31:47.2202245Z  Context:    default
+2025-09-11T23:31:47.2213555Z  Debug Mode: false
+2025-09-11T23:31:47.2215003Z  Plugins:
+2025-09-11T23:31:47.2216032Z   buildx: Docker Buildx (Docker Inc.)
+2025-09-11T23:31:47.2217218Z     Version:  v0.28.0
+2025-09-11T23:31:47.2218745Z     Path:     /usr/libexec/docker/cli-plugins/docker-buildx
+2025-09-11T23:31:47.2220326Z   compose: Docker Compose (Docker Inc.)
+2025-09-11T23:31:47.2226585Z     Version:  v2.38.2
+2025-09-11T23:31:47.2229060Z     Path:     /usr/libexec/docker/cli-plugins/docker-compose
+2025-09-11T23:31:47.2230020Z 
+2025-09-11T23:31:47.2230251Z Server:
+2025-09-11T23:31:47.2230853Z  Containers: 0
+2025-09-11T23:31:47.2231499Z   Running: 0
+2025-09-11T23:31:47.2232133Z   Paused: 0
+2025-09-11T23:31:47.2232755Z   Stopped: 0
+2025-09-11T23:31:47.2233407Z  Images: 0
+2025-09-11T23:31:47.2234038Z  Server Version: 28.0.4
+2025-09-11T23:31:47.2235095Z  Storage Driver: overlay2
+2025-09-11T23:31:47.2235903Z   Backing Filesystem: extfs
+2025-09-11T23:31:47.2236765Z   Supports d_type: true
+2025-09-11T23:31:47.2237536Z   Using metacopy: false
+2025-09-11T23:31:47.2238306Z   Native Overlay Diff: false
+2025-09-11T23:31:47.2239120Z   userxattr: false
+2025-09-11T23:31:47.2239822Z  Logging Driver: json-file
+2025-09-11T23:31:47.2240641Z  Cgroup Driver: systemd
+2025-09-11T23:31:47.2241382Z  Cgroup Version: 2
+2025-09-11T23:31:47.2242051Z  Plugins:
+2025-09-11T23:31:47.2242654Z   Volume: local
+2025-09-11T23:31:47.2243521Z   Network: bridge host ipvlan macvlan null overlay
+2025-09-11T23:31:47.2245514Z   Log: awslogs fluentd gcplogs gelf journald json-file local splunk syslog
+2025-09-11T23:31:47.2246918Z  Swarm: inactive
+2025-09-11T23:31:47.2247720Z  Runtimes: io.containerd.runc.v2 runc
+2025-09-11T23:31:47.2248691Z  Default Runtime: runc
+2025-09-11T23:31:47.2249818Z  Init Binary: docker-init
+2025-09-11T23:31:47.2250971Z  containerd version: 05044ec0a9a75232cad458027ca83437aae3f4da
+2025-09-11T23:31:47.2252302Z  runc version: v1.2.5-0-g59923ef
+2025-09-11T23:31:47.2253185Z  init version: de40ad0
+2025-09-11T23:31:47.2253940Z  Security Options:
+2025-09-11T23:31:47.2254865Z   apparmor
+2025-09-11T23:31:47.2255434Z   seccomp
+2025-09-11T23:31:47.2256003Z    Profile: builtin
+2025-09-11T23:31:47.2256678Z   cgroupns
+2025-09-11T23:31:47.2257320Z  Kernel Version: 6.11.0-1018-azure
+2025-09-11T23:31:47.2258199Z  Operating System: Ubuntu 24.04.3 LTS
+2025-09-11T23:31:47.2259123Z  OSType: linux
+2025-09-11T23:31:47.2259795Z  Architecture: x86_64
+2025-09-11T23:31:47.2260504Z  CPUs: 2
+2025-09-11T23:31:47.2261104Z  Total Memory: 7.758GiB
+2025-09-11T23:31:47.2261883Z  Name: runnervmf4ws1
+2025-09-11T23:31:47.2262674Z  ID: 80b0c887-f378-498c-94b8-5e260688697c
+2025-09-11T23:31:47.2263684Z  Docker Root Dir: /var/lib/docker
+2025-09-11T23:31:47.2264868Z  Debug Mode: false
+2025-09-11T23:31:47.2265605Z  Username: githubactions
+2025-09-11T23:31:47.2266402Z  Experimental: false
+2025-09-11T23:31:47.2267176Z  Insecure Registries:
+2025-09-11T23:31:47.2273280Z   ::1/128
+2025-09-11T23:31:47.2274338Z   127.0.0.0/8
+2025-09-11T23:31:47.2275359Z  Live Restore Enabled: false
+2025-09-11T23:31:47.2276160Z 
+2025-09-11T23:31:47.2284690Z ##[endgroup]
+2025-09-11T23:31:47.2906323Z ##[group]Buildx version
+2025-09-11T23:31:47.2937211Z [command]/usr/bin/docker buildx version
+2025-09-11T23:31:47.3446348Z github.com/docker/buildx v0.28.0 b1281b81bba797b21d9eaf256e6a13eb14419836
+2025-09-11T23:31:47.3477851Z ##[endgroup]
+2025-09-11T23:31:47.3646200Z ##[group]Inspecting default docker context
+2025-09-11T23:31:47.3798955Z [
+2025-09-11T23:31:47.3800487Z   {
+2025-09-11T23:31:47.3803180Z     "Name": "default",
+2025-09-11T23:31:47.3806218Z     "Metadata": {},
+2025-09-11T23:31:47.3806838Z     "Endpoints": {
+2025-09-11T23:31:47.3807439Z       "docker": {
+2025-09-11T23:31:47.3808100Z         "Host": "unix:///var/run/docker.sock",
+2025-09-11T23:31:47.3808934Z         "SkipTLSVerify": false
+2025-09-11T23:31:47.3809611Z       }
+2025-09-11T23:31:47.3810138Z     },
+2025-09-11T23:31:47.3810687Z     "TLSMaterial": {},
+2025-09-11T23:31:47.3811315Z     "Storage": {
+2025-09-11T23:31:47.3811945Z       "MetadataPath": "<IN MEMORY>",
+2025-09-11T23:31:47.3812697Z       "TLSPath": "<IN MEMORY>"
+2025-09-11T23:31:47.3813338Z     }
+2025-09-11T23:31:47.3813839Z   }
+2025-09-11T23:31:47.3814645Z ]
+2025-09-11T23:31:47.3816212Z ##[endgroup]
+2025-09-11T23:31:47.3817314Z ##[group]Creating a new builder instance
+2025-09-11T23:31:47.6007023Z [command]/usr/bin/docker buildx create --name builder-63c622ec-2dce-466a-a63f-59699647b342 --driver docker-container --buildkitd-flags --allow-insecure-entitlement security.insecure --allow-insecure-entitlement network.host --use
+2025-09-11T23:31:47.7019291Z builder-63c622ec-2dce-466a-a63f-59699647b342
+2025-09-11T23:31:47.7074580Z ##[endgroup]
+2025-09-11T23:31:47.7077758Z ##[group]Booting builder
+2025-09-11T23:31:47.7136834Z [command]/usr/bin/docker buildx inspect --bootstrap --builder builder-63c622ec-2dce-466a-a63f-59699647b342
+2025-09-11T23:31:47.8088520Z #1 [internal] booting buildkit
+2025-09-11T23:31:47.9591546Z #1 pulling image moby/buildkit:buildx-stable-1
+2025-09-11T23:31:52.0516749Z #1 pulling image moby/buildkit:buildx-stable-1 4.2s done
+2025-09-11T23:31:52.2018654Z #1 creating container buildx_buildkit_builder-63c622ec-2dce-466a-a63f-59699647b3420
+2025-09-11T23:31:52.4908479Z #1 creating container buildx_buildkit_builder-63c622ec-2dce-466a-a63f-59699647b3420 0.4s done
+2025-09-11T23:31:52.4968956Z #1 DONE 4.7s
+2025-09-11T23:31:52.5376128Z Name:          builder-63c622ec-2dce-466a-a63f-59699647b342
+2025-09-11T23:31:52.5376678Z Driver:        docker-container
+2025-09-11T23:31:52.5377098Z Last Activity: 2025-09-11 23:31:47 +0000 UTC
+2025-09-11T23:31:52.5377387Z 
+2025-09-11T23:31:52.5377501Z Nodes:
+2025-09-11T23:31:52.5377874Z Name:                  builder-63c622ec-2dce-466a-a63f-59699647b3420
+2025-09-11T23:31:52.5378852Z Endpoint:              unix:///var/run/docker.sock
+2025-09-11T23:31:52.5379315Z Status:                running
+2025-09-11T23:31:52.5380084Z BuildKit daemon flags: --allow-insecure-entitlement security.insecure --allow-insecure-entitlement network.host
+2025-09-11T23:31:52.5385076Z BuildKit version:      v0.24.0
+2025-09-11T23:31:52.5385625Z Platforms:             linux/amd64, linux/amd64/v2, linux/amd64/v3, linux/386
+2025-09-11T23:31:52.5386134Z Labels:
+2025-09-11T23:31:52.5386572Z  org.mobyproject.buildkit.worker.executor:         oci
+2025-09-11T23:31:52.5387197Z  org.mobyproject.buildkit.worker.hostname:         518b69c4540e
+2025-09-11T23:31:52.5387810Z  org.mobyproject.buildkit.worker.network:          host
+2025-09-11T23:31:52.5388431Z  org.mobyproject.buildkit.worker.oci.process-mode: sandbox
+2025-09-11T23:31:52.5389081Z  org.mobyproject.buildkit.worker.selinux.enabled:  false
+2025-09-11T23:31:52.5389694Z  org.mobyproject.buildkit.worker.snapshotter:      overlayfs
+2025-09-11T23:31:52.5390214Z GC Policy rule#0:
+2025-09-11T23:31:52.5390542Z  All:            false
+2025-09-11T23:31:52.5391072Z  Filters:        type==source.local,type==exec.cachemount,type==source.git.checkout
+2025-09-11T23:31:52.5391714Z  Keep Duration:  48h0m0s
+2025-09-11T23:31:52.5392050Z  Max Used Space: 488.3MiB
+2025-09-11T23:31:52.5392371Z GC Policy rule#1:
+2025-09-11T23:31:52.5430515Z  All:            false
+2025-09-11T23:31:52.5430952Z  Keep Duration:  1440h0m0s
+2025-09-11T23:31:52.5431390Z  Reserved Space: 7.451GiB
+2025-09-11T23:31:52.5431818Z  Max Used Space: 54.02GiB
+2025-09-11T23:31:52.5432181Z  Min Free Space: 13.97GiB
+2025-09-11T23:31:52.5432563Z GC Policy rule#2:
+2025-09-11T23:31:52.5432910Z  All:            false
+2025-09-11T23:31:52.5433251Z  Reserved Space: 7.451GiB
+2025-09-11T23:31:52.5433627Z  Max Used Space: 54.02GiB
+2025-09-11T23:31:52.5433980Z  Min Free Space: 13.97GiB
+2025-09-11T23:31:52.5456747Z GC Policy rule#3:
+2025-09-11T23:31:52.5457103Z  All:            true
+2025-09-11T23:31:52.5457497Z  Reserved Space: 7.451GiB
+2025-09-11T23:31:52.5457864Z  Max Used Space: 54.02GiB
+2025-09-11T23:31:52.5458233Z  Min Free Space: 13.97GiB
+2025-09-11T23:31:52.5496652Z ##[endgroup]
+2025-09-11T23:31:52.6456382Z ##[group]Inspect builder
+2025-09-11T23:31:52.6457179Z {
+2025-09-11T23:31:52.6457427Z   "nodes": [
+2025-09-11T23:31:52.6457729Z     {
+2025-09-11T23:31:52.6458132Z       "name": "builder-63c622ec-2dce-466a-a63f-59699647b3420",
+2025-09-11T23:31:52.6458695Z       "endpoint": "unix:///var/run/docker.sock",
+2025-09-11T23:31:52.6459576Z       "status": "running",
+2025-09-11T23:31:52.6460404Z       "buildkitd-flags": "--allow-insecure-entitlement security.insecure --allow-insecure-entitlement network.host",
+2025-09-11T23:31:52.6461258Z       "buildkit": "v0.24.0",
+2025-09-11T23:31:52.6461793Z       "platforms": "linux/amd64,linux/amd64/v2,linux/amd64/v3,linux/386",
+2025-09-11T23:31:52.6462336Z       "features": {
+2025-09-11T23:31:52.6462833Z         "Automatically load images to the Docker Engine image store": true,
+2025-09-11T23:31:52.6463429Z         "Cache export": true,
+2025-09-11T23:31:52.6463817Z         "Direct push": true,
+2025-09-11T23:31:52.6464695Z         "Docker exporter": true,
+2025-09-11T23:31:52.6465125Z         "Multi-platform build": true,
+2025-09-11T23:31:52.6465557Z         "OCI exporter": true
+2025-09-11T23:31:52.6465910Z       },
+2025-09-11T23:31:52.6466180Z       "labels": {
+2025-09-11T23:31:52.6466577Z         "org.mobyproject.buildkit.worker.executor": "oci",
+2025-09-11T23:31:52.6467162Z         "org.mobyproject.buildkit.worker.hostname": "518b69c4540e",
+2025-09-11T23:31:52.6467712Z         "org.mobyproject.buildkit.worker.network": "host",
+2025-09-11T23:31:52.6468642Z         "org.mobyproject.buildkit.worker.oci.process-mode": "sandbox",
+2025-09-11T23:31:52.6469343Z         "org.mobyproject.buildkit.worker.selinux.enabled": "false",
+2025-09-11T23:31:52.6470098Z         "org.mobyproject.buildkit.worker.snapshotter": "overlayfs"
+2025-09-11T23:31:52.6470785Z       },
+2025-09-11T23:31:52.6471100Z       "gcPolicy": [
+2025-09-11T23:31:52.6471740Z         {
+2025-09-11T23:31:52.6472114Z           "all": false,
+2025-09-11T23:31:52.6472545Z           "filter": [
+2025-09-11T23:31:52.6472933Z             "type==source.local",
+2025-09-11T23:31:52.6473466Z             "type==exec.cachemount",
+2025-09-11T23:31:52.6474000Z             "type==source.git.checkout"
+2025-09-11T23:31:52.6491614Z           ],
+2025-09-11T23:31:52.6492100Z           "keepDuration": "48h0m0s",
+2025-09-11T23:31:52.6492608Z           "maxUsedSpace": "488.3MiB"
+2025-09-11T23:31:52.6493080Z         },
+2025-09-11T23:31:52.6526565Z         {
+2025-09-11T23:31:52.6526877Z           "all": false,
+2025-09-11T23:31:52.6527204Z           "keepDuration": "1440h0m0s",
+2025-09-11T23:31:52.6527579Z           "reservedSpace": "7.451GiB",
+2025-09-11T23:31:52.6527957Z           "maxUsedSpace": "54.02GiB",
+2025-09-11T23:31:52.6528325Z           "minFreeSpace": "13.97GiB"
+2025-09-11T23:31:52.6528667Z         },
+2025-09-11T23:31:52.6528893Z         {
+2025-09-11T23:31:52.6529153Z           "all": false,
+2025-09-11T23:31:52.6529479Z           "reservedSpace": "7.451GiB",
+2025-09-11T23:31:52.6529865Z           "maxUsedSpace": "54.02GiB",
+2025-09-11T23:31:52.6530183Z           "minFreeSpace": "13.97GiB"
+2025-09-11T23:31:52.6530516Z         },
+2025-09-11T23:31:52.6530758Z         {
+2025-09-11T23:31:52.6531001Z           "all": true,
+2025-09-11T23:31:52.6531313Z           "reservedSpace": "7.451GiB",
+2025-09-11T23:31:52.6531669Z           "maxUsedSpace": "54.02GiB",
+2025-09-11T23:31:52.6532024Z           "minFreeSpace": "13.97GiB"
+2025-09-11T23:31:52.6532337Z         }
+2025-09-11T23:31:52.6532559Z       ]
+2025-09-11T23:31:52.6532782Z     }
+2025-09-11T23:31:52.6533014Z   ],
+2025-09-11T23:31:52.6533592Z   "name": "builder-63c622ec-2dce-466a-a63f-59699647b342",
+2025-09-11T23:31:52.6534050Z   "driver": "docker-container",
+2025-09-11T23:31:52.6542879Z   "lastActivity": "2025-09-11T23:31:47.000Z"
+2025-09-11T23:31:52.6543279Z }
+2025-09-11T23:31:52.6543935Z ##[endgroup]
+2025-09-11T23:31:52.6544691Z ##[group]BuildKit version
+2025-09-11T23:31:52.6545136Z builder-63c622ec-2dce-466a-a63f-59699647b3420: v0.24.0
+2025-09-11T23:31:52.6545827Z ##[endgroup]
+2025-09-11T23:31:52.6698724Z ##[group]Run docker/build-push-action@v6
+2025-09-11T23:31:52.6698997Z with:
+2025-09-11T23:31:52.6699167Z   context: .
+2025-09-11T23:31:52.6699333Z   push: true
+2025-09-11T23:31:52.6699537Z   tags: ghcr.io/mainmuck/ci.cdcompany:ci-l1
+2025-09-11T23:31:52.6699782Z   load: false
+2025-09-11T23:31:52.6700127Z   no-cache: false
+2025-09-11T23:31:52.6700302Z   pull: false
+2025-09-11T23:31:52.6700600Z   github-token: ***
+2025-09-11T23:31:52.6700796Z ##[endgroup]
+2025-09-11T23:31:52.9891626Z ##[group]GitHub Actions runtime token ACs
+2025-09-11T23:31:52.9906429Z refs/pull/2/merge: read/write
+2025-09-11T23:31:52.9929525Z refs/heads/main: read
+2025-09-11T23:31:52.9930295Z ##[endgroup]
+2025-09-11T23:31:52.9930874Z ##[group]Docker info
+2025-09-11T23:31:52.9965255Z [command]/usr/bin/docker version
+2025-09-11T23:31:53.0298690Z Client: Docker Engine - Community
+2025-09-11T23:31:53.0302010Z  Version:           28.0.4
+2025-09-11T23:31:53.0302375Z  API version:       1.48
+2025-09-11T23:31:53.0302801Z  Go version:        go1.23.7
+2025-09-11T23:31:53.0303146Z  Git commit:        b8034c0
+2025-09-11T23:31:53.0303511Z  Built:             Tue Mar 25 15:07:16 2025
+2025-09-11T23:31:53.0303911Z  OS/Arch:           linux/amd64
+2025-09-11T23:31:53.0304454Z  Context:           default
+2025-09-11T23:31:53.0304668Z 
+2025-09-11T23:31:53.0304841Z Server: Docker Engine - Community
+2025-09-11T23:31:53.0308123Z  Engine:
+2025-09-11T23:31:53.0308417Z   Version:          28.0.4
+2025-09-11T23:31:53.0308820Z   API version:      1.48 (minimum version 1.24)
+2025-09-11T23:31:53.0309298Z   Go version:       go1.23.7
+2025-09-11T23:31:53.0309668Z   Git commit:       6430e49
+2025-09-11T23:31:53.0310044Z   Built:            Tue Mar 25 15:07:16 2025
+2025-09-11T23:31:53.0310472Z   OS/Arch:          linux/amd64
+2025-09-11T23:31:53.0310849Z   Experimental:     false
+2025-09-11T23:31:53.0311189Z  containerd:
+2025-09-11T23:31:53.0311497Z   Version:          1.7.27
+2025-09-11T23:31:53.0311948Z   GitCommit:        05044ec0a9a75232cad458027ca83437aae3f4da
+2025-09-11T23:31:53.0312409Z  runc:
+2025-09-11T23:31:53.0312694Z   Version:          1.2.5
+2025-09-11T23:31:53.0313059Z   GitCommit:        v1.2.5-0-g59923ef
+2025-09-11T23:31:53.0313469Z  docker-init:
+2025-09-11T23:31:53.0313752Z   Version:          0.19.0
+2025-09-11T23:31:53.0314283Z   GitCommit:        de40ad0
+2025-09-11T23:31:53.0352302Z [command]/usr/bin/docker info
+2025-09-11T23:31:53.1101178Z Client: Docker Engine - Community
+2025-09-11T23:31:53.1102182Z  Version:    28.0.4
+2025-09-11T23:31:53.1105018Z  Context:    default
+2025-09-11T23:31:53.1106303Z  Debug Mode: false
+2025-09-11T23:31:53.1107230Z  Plugins:
+2025-09-11T23:31:53.1108071Z   buildx: Docker Buildx (Docker Inc.)
+2025-09-11T23:31:53.1108865Z     Version:  v0.28.0
+2025-09-11T23:31:53.1109805Z     Path:     /usr/libexec/docker/cli-plugins/docker-buildx
+2025-09-11T23:31:53.1110915Z   compose: Docker Compose (Docker Inc.)
+2025-09-11T23:31:53.1113167Z     Version:  v2.38.2
+2025-09-11T23:31:53.1113990Z     Path:     /usr/libexec/docker/cli-plugins/docker-compose
+2025-09-11T23:31:53.1117244Z 
+2025-09-11T23:31:53.1117386Z Server:
+2025-09-11T23:31:53.1117666Z  Containers: 1
+2025-09-11T23:31:53.1117973Z   Running: 1
+2025-09-11T23:31:53.1118259Z   Paused: 0
+2025-09-11T23:31:53.1118541Z   Stopped: 0
+2025-09-11T23:31:53.1118823Z  Images: 1
+2025-09-11T23:31:53.1119131Z  Server Version: 28.0.4
+2025-09-11T23:31:53.1119475Z  Storage Driver: overlay2
+2025-09-11T23:31:53.1119848Z   Backing Filesystem: extfs
+2025-09-11T23:31:53.1120215Z   Supports d_type: true
+2025-09-11T23:31:53.1120558Z   Using metacopy: false
+2025-09-11T23:31:53.1120909Z   Native Overlay Diff: false
+2025-09-11T23:31:53.1121268Z   userxattr: false
+2025-09-11T23:31:53.1121605Z  Logging Driver: json-file
+2025-09-11T23:31:53.1121969Z  Cgroup Driver: systemd
+2025-09-11T23:31:53.1122316Z  Cgroup Version: 2
+2025-09-11T23:31:53.1122617Z  Plugins:
+2025-09-11T23:31:53.1122908Z   Volume: local
+2025-09-11T23:31:53.1123277Z   Network: bridge host ipvlan macvlan null overlay
+2025-09-11T23:31:53.1124596Z   Log: awslogs fluentd gcplogs gelf journald json-file local splunk syslog
+2025-09-11T23:31:53.1125230Z  Swarm: inactive
+2025-09-11T23:31:53.1125563Z  Runtimes: io.containerd.runc.v2 runc
+2025-09-11T23:31:53.1125979Z  Default Runtime: runc
+2025-09-11T23:31:53.1126325Z  Init Binary: docker-init
+2025-09-11T23:31:53.1127019Z  containerd version: 05044ec0a9a75232cad458027ca83437aae3f4da
+2025-09-11T23:31:53.1127541Z  runc version: v1.2.5-0-g59923ef
+2025-09-11T23:31:53.1127942Z  init version: de40ad0
+2025-09-11T23:31:53.1128263Z  Security Options:
+2025-09-11T23:31:53.1128568Z   apparmor
+2025-09-11T23:31:53.1128838Z   seccomp
+2025-09-11T23:31:53.1129120Z    Profile: builtin
+2025-09-11T23:31:53.1129426Z   cgroupns
+2025-09-11T23:31:53.1129736Z  Kernel Version: 6.11.0-1018-azure
+2025-09-11T23:31:53.1130153Z  Operating System: Ubuntu 24.04.3 LTS
+2025-09-11T23:31:53.1130557Z  OSType: linux
+2025-09-11T23:31:53.1130869Z  Architecture: x86_64
+2025-09-11T23:31:53.1131185Z  CPUs: 2
+2025-09-11T23:31:53.1131474Z  Total Memory: 7.758GiB
+2025-09-11T23:31:53.1131796Z  Name: runnervmf4ws1
+2025-09-11T23:31:53.1132137Z  ID: 80b0c887-f378-498c-94b8-5e260688697c
+2025-09-11T23:31:53.1132546Z  Docker Root Dir: /var/lib/docker
+2025-09-11T23:31:53.1132910Z  Debug Mode: false
+2025-09-11T23:31:53.1133212Z  Username: githubactions
+2025-09-11T23:31:53.1133569Z  Experimental: false
+2025-09-11T23:31:53.1133886Z  Insecure Registries:
+2025-09-11T23:31:53.1155294Z   ::1/128
+2025-09-11T23:31:53.1155595Z   127.0.0.0/8
+2025-09-11T23:31:53.1155968Z  Live Restore Enabled: false
+2025-09-11T23:31:53.1156230Z 
+2025-09-11T23:31:53.1162895Z ##[endgroup]
+2025-09-11T23:31:53.1167021Z ##[group]Proxy configuration
+2025-09-11T23:31:53.1176245Z No proxy configuration found
+2025-09-11T23:31:53.1180003Z ##[endgroup]
+2025-09-11T23:31:53.2131064Z ##[group]Buildx version
+2025-09-11T23:31:53.2172347Z [command]/usr/bin/docker buildx version
+2025-09-11T23:31:53.3040419Z github.com/docker/buildx v0.28.0 b1281b81bba797b21d9eaf256e6a13eb14419836
+2025-09-11T23:31:53.3095514Z ##[endgroup]
+2025-09-11T23:31:53.3096264Z ##[group]Builder info
+2025-09-11T23:31:53.4101924Z {
+2025-09-11T23:31:53.4102265Z   "nodes": [
+2025-09-11T23:31:53.4102555Z     {
+2025-09-11T23:31:53.4102950Z       "name": "builder-63c622ec-2dce-466a-a63f-59699647b3420",
+2025-09-11T23:31:53.4103513Z       "endpoint": "unix:///var/run/docker.sock",
+2025-09-11T23:31:53.4103979Z       "status": "running",
+2025-09-11T23:31:53.4105109Z       "buildkitd-flags": "--allow-insecure-entitlement security.insecure --allow-insecure-entitlement network.host",
+2025-09-11T23:31:53.4105951Z       "buildkit": "v0.24.0",
+2025-09-11T23:31:53.4106467Z       "platforms": "linux/amd64,linux/amd64/v2,linux/amd64/v3,linux/386",
+2025-09-11T23:31:53.4107014Z       "features": {
+2025-09-11T23:31:53.4107473Z         "Automatically load images to the Docker Engine image store": true,
+2025-09-11T23:31:53.4108048Z         "Cache export": true,
+2025-09-11T23:31:53.4108459Z         "Direct push": true,
+2025-09-11T23:31:53.4108858Z         "Docker exporter": true,
+2025-09-11T23:31:53.4109253Z         "Multi-platform build": true,
+2025-09-11T23:31:53.4109666Z         "OCI exporter": true
+2025-09-11T23:31:53.4110008Z       },
+2025-09-11T23:31:53.4110286Z       "labels": {
+2025-09-11T23:31:53.4110693Z         "org.mobyproject.buildkit.worker.executor": "oci",
+2025-09-11T23:31:53.4111332Z         "org.mobyproject.buildkit.worker.hostname": "518b69c4540e",
+2025-09-11T23:31:53.4111904Z         "org.mobyproject.buildkit.worker.network": "host",
+2025-09-11T23:31:53.4112556Z         "org.mobyproject.buildkit.worker.oci.process-mode": "sandbox",
+2025-09-11T23:31:53.4113281Z         "org.mobyproject.buildkit.worker.selinux.enabled": "false",
+2025-09-11T23:31:53.4113958Z         "org.mobyproject.buildkit.worker.snapshotter": "overlayfs"
+2025-09-11T23:31:53.4114735Z       },
+2025-09-11T23:31:53.4115005Z       "gcPolicy": [
+2025-09-11T23:31:53.4115308Z         {
+2025-09-11T23:31:53.4115573Z           "all": false,
+2025-09-11T23:31:53.4115870Z           "filter": [
+2025-09-11T23:31:53.4116481Z             "type==source.local",
+2025-09-11T23:31:53.4116895Z             "type==exec.cachemount",
+2025-09-11T23:31:53.4117317Z             "type==source.git.checkout"
+2025-09-11T23:31:53.4117697Z           ],
+2025-09-11T23:31:53.4118004Z           "keepDuration": "48h0m0s",
+2025-09-11T23:31:53.4118620Z           "maxUsedSpace": "488.3MiB"
+2025-09-11T23:31:53.4119004Z         },
+2025-09-11T23:31:53.4119275Z         {
+2025-09-11T23:31:53.4119556Z           "all": false,
+2025-09-11T23:31:53.4119895Z           "keepDuration": "1440h0m0s",
+2025-09-11T23:31:53.4120314Z           "reservedSpace": "7.451GiB",
+2025-09-11T23:31:53.4120717Z           "maxUsedSpace": "54.02GiB",
+2025-09-11T23:31:53.4121129Z           "minFreeSpace": "13.97GiB"
+2025-09-11T23:31:53.4121502Z         },
+2025-09-11T23:31:53.4121778Z         {
+2025-09-11T23:31:53.4122049Z           "all": false,
+2025-09-11T23:31:53.4122393Z           "reservedSpace": "7.451GiB",
+2025-09-11T23:31:53.4122811Z           "maxUsedSpace": "54.02GiB",
+2025-09-11T23:31:53.4123209Z           "minFreeSpace": "13.97GiB"
+2025-09-11T23:31:53.4123581Z         },
+2025-09-11T23:31:53.4123842Z         {
+2025-09-11T23:31:53.4124317Z           "all": true,
+2025-09-11T23:31:53.4124656Z           "reservedSpace": "7.451GiB",
+2025-09-11T23:31:53.4125063Z           "maxUsedSpace": "54.02GiB",
+2025-09-11T23:31:53.4125469Z           "minFreeSpace": "13.97GiB"
+2025-09-11T23:31:53.4125807Z         }
+2025-09-11T23:31:53.4126080Z       ]
+2025-09-11T23:31:53.4126338Z     }
+2025-09-11T23:31:53.4126585Z   ],
+2025-09-11T23:31:53.4126948Z   "name": "builder-63c622ec-2dce-466a-a63f-59699647b342",
+2025-09-11T23:31:53.4127443Z   "driver": "docker-container",
+2025-09-11T23:31:53.4127855Z   "lastActivity": "2025-09-11T23:31:47.000Z"
+2025-09-11T23:31:53.4128245Z }
+2025-09-11T23:31:53.4128959Z ##[endgroup]
+2025-09-11T23:31:53.5716890Z [command]/usr/bin/docker buildx build --iidfile /home/runner/work/_temp/docker-actions-toolkit-4klUTQ/build-iidfile-ca05e571ac.txt --attest type=provenance,mode=min,inline-only=true,builder-id=https://github.com/MainMuck/Ci.cdcompany/actions/runs/17659945942/attempts/1 --tag ghcr.io/mainmuck/ci.cdcompany:ci-l1 --metadata-file /home/runner/work/_temp/docker-actions-toolkit-4klUTQ/build-metadata-aed99c4b94.json --push .
+2025-09-11T23:31:53.8873343Z #0 building with "builder-63c622ec-2dce-466a-a63f-59699647b342" instance using docker-container driver
+2025-09-11T23:31:53.8874900Z 
+2025-09-11T23:31:53.8875121Z #1 [internal] load build definition from Dockerfile
+2025-09-11T23:31:53.8875656Z #1 transferring dockerfile: 293B done
+2025-09-11T23:31:53.8876060Z #1 DONE 0.0s
+2025-09-11T23:31:53.8876230Z 
+2025-09-11T23:31:53.8876450Z #2 [auth] library/python:pull token for registry-1.docker.io
+2025-09-11T23:31:53.8876926Z #2 DONE 0.0s
+2025-09-11T23:31:53.8877091Z 
+2025-09-11T23:31:53.8877340Z #3 [internal] load metadata for docker.io/library/python:3.12-slim
+2025-09-11T23:31:54.0517479Z #3 DONE 0.4s
+2025-09-11T23:31:54.1796708Z 
+2025-09-11T23:31:54.1826041Z #4 [internal] load .dockerignore
+2025-09-11T23:31:54.1826506Z #4 transferring context: 69B done
+2025-09-11T23:31:54.1826880Z #4 DONE 0.0s
+2025-09-11T23:31:54.1827051Z 
+2025-09-11T23:31:54.1827189Z #5 [internal] load build context
+2025-09-11T23:31:54.1827566Z #5 transferring context: 348B done
+2025-09-11T23:31:54.1831633Z #5 DONE 0.0s
+2025-09-11T23:31:54.1834431Z 
+2025-09-11T23:31:54.1835033Z #6 [1/5] FROM docker.io/library/python:3.12-slim@sha256:31551bd80310d95ed82a4a14dba8c908c85098f07457e8a5b6a946385cfd86c8
+2025-09-11T23:31:54.1838547Z #6 resolve docker.io/library/python:3.12-slim@sha256:31551bd80310d95ed82a4a14dba8c908c85098f07457e8a5b6a946385cfd86c8 0.0s done
+2025-09-11T23:31:54.1841817Z #6 sha256:debe34bebc01f52b9f6e7fc26f1f74708de668b6088d586352067e5d881087d8 249B / 249B 0.1s done
+2025-09-11T23:31:54.2853185Z #6 sha256:ae44614ad59ae7d9347036fab246b3ec97ae8dca5a034c8c0057cd787bceb8fa 1.29MB / 1.29MB 0.1s done
+2025-09-11T23:31:54.2854944Z #6 sha256:48b120ca37b5b627d81d3cb2e63d808078495be97454db590bba47194cb017ee 5.24MB / 12.11MB 0.2s
+2025-09-11T23:31:54.2856084Z #6 sha256:ce1261c6d567efa8e3b457673eeeb474a0a8066df6bb95ca9a6a94a31e219dd3 7.34MB / 29.77MB 0.2s
+2025-09-11T23:31:54.4172301Z #6 sha256:48b120ca37b5b627d81d3cb2e63d808078495be97454db590bba47194cb017ee 12.11MB / 12.11MB 0.2s done
+2025-09-11T23:31:54.4173539Z #6 sha256:ce1261c6d567efa8e3b457673eeeb474a0a8066df6bb95ca9a6a94a31e219dd3 29.77MB / 29.77MB 0.3s done
+2025-09-11T23:31:54.5707649Z #6 extracting sha256:ce1261c6d567efa8e3b457673eeeb474a0a8066df6bb95ca9a6a94a31e219dd3
+2025-09-11T23:31:55.1856645Z #6 extracting sha256:ce1261c6d567efa8e3b457673eeeb474a0a8066df6bb95ca9a6a94a31e219dd3 0.8s done
+2025-09-11T23:31:55.1857762Z #6 DONE 1.1s
+2025-09-11T23:31:55.4220785Z 
+2025-09-11T23:31:55.4221813Z #6 [1/5] FROM docker.io/library/python:3.12-slim@sha256:31551bd80310d95ed82a4a14dba8c908c85098f07457e8a5b6a946385cfd86c8
+2025-09-11T23:31:55.4222944Z #6 extracting sha256:ae44614ad59ae7d9347036fab246b3ec97ae8dca5a034c8c0057cd787bceb8fa 0.1s done
+2025-09-11T23:31:55.4225087Z #6 extracting sha256:48b120ca37b5b627d81d3cb2e63d808078495be97454db590bba47194cb017ee
+2025-09-11T23:31:55.6800006Z #6 extracting sha256:48b120ca37b5b627d81d3cb2e63d808078495be97454db590bba47194cb017ee 0.4s done
+2025-09-11T23:31:55.6804439Z #6 DONE 1.6s
+2025-09-11T23:31:55.8396351Z 
+2025-09-11T23:31:55.8398834Z #6 [1/5] FROM docker.io/library/python:3.12-slim@sha256:31551bd80310d95ed82a4a14dba8c908c85098f07457e8a5b6a946385cfd86c8
+2025-09-11T23:31:55.8406407Z #6 extracting sha256:debe34bebc01f52b9f6e7fc26f1f74708de668b6088d586352067e5d881087d8 done
+2025-09-11T23:31:55.8407096Z #6 DONE 1.6s
+2025-09-11T23:31:55.8407276Z 
+2025-09-11T23:31:55.8407397Z #7 [2/5] WORKDIR /app
+2025-09-11T23:31:56.0981806Z #7 DONE 0.4s
+2025-09-11T23:31:56.2610530Z 
+2025-09-11T23:31:56.2612425Z #8 [3/5] COPY requirements.txt .
+2025-09-11T23:31:56.2613419Z #8 DONE 0.0s
+2025-09-11T23:31:56.2614340Z 
+2025-09-11T23:31:56.2614935Z #9 [4/5] RUN pip install --no-cache-dir -r requirements.txt
+2025-09-11T23:31:57.5552310Z #9 1.444 Collecting fastapi==0.111.0 (from -r requirements.txt (line 1))
+2025-09-11T23:31:57.6589162Z #9 1.477   Downloading fastapi-0.111.0-py3-none-any.whl.metadata (25 kB)
+2025-09-11T23:31:57.6590297Z #9 1.508 Collecting uvicorn==0.30.0 (from -r requirements.txt (line 2))
+2025-09-11T23:31:57.6591194Z #9 1.517   Downloading uvicorn-0.30.0-py3-none-any.whl.metadata (6.3 kB)
+2025-09-11T23:31:57.6591905Z #9 1.548 Collecting starlette<0.38.0,>=0.37.2 (from fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:57.7838955Z #9 1.555   Downloading starlette-0.37.2-py3-none-any.whl.metadata (5.9 kB)
+2025-09-11T23:31:57.7840653Z #9 1.673 Collecting pydantic!=1.8,!=1.8.1,!=2.0.0,!=2.0.1,!=2.1.0,<3.0.0,>=1.7.4 (from fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:57.8861523Z #9 1.681   Downloading pydantic-2.11.7-py3-none-any.whl.metadata (67 kB)
+2025-09-11T23:31:57.8862494Z #9 1.704 Collecting typing-extensions>=4.8.0 (from fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:57.8863405Z #9 1.711   Downloading typing_extensions-4.15.0-py3-none-any.whl.metadata (3.3 kB)
+2025-09-11T23:31:57.8864407Z #9 1.723 Collecting fastapi-cli>=0.0.2 (from fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:57.8865191Z #9 1.730   Downloading fastapi_cli-0.0.11-py3-none-any.whl.metadata (6.3 kB)
+2025-09-11T23:31:57.8865953Z #9 1.750 Collecting httpx>=0.23.0 (from fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:57.8866679Z #9 1.757   Downloading httpx-0.28.1-py3-none-any.whl.metadata (7.1 kB)
+2025-09-11T23:31:57.8867431Z #9 1.775 Collecting jinja2>=2.11.2 (from fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:58.1350623Z #9 1.783   Downloading jinja2-3.1.6-py3-none-any.whl.metadata (2.9 kB)
+2025-09-11T23:31:58.1352230Z #9 1.807 Collecting python-multipart>=0.0.7 (from fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:58.1354515Z #9 1.816   Downloading python_multipart-0.0.20-py3-none-any.whl.metadata (1.8 kB)
+2025-09-11T23:31:58.1359929Z #9 1.866 Collecting ujson!=4.0.2,!=4.1.0,!=4.2.0,!=4.3.0,!=5.0.0,!=5.1.0,>=4.0.1 (from fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:58.1361046Z #9 1.874   Downloading ujson-5.11.0-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl.metadata (9.4 kB)
+2025-09-11T23:31:58.1730084Z #9 2.062 Collecting orjson>=3.2.1 (from fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:58.2747548Z #9 2.071   Downloading orjson-3.11.3-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (41 kB)
+2025-09-11T23:31:58.2748723Z #9 2.087 Collecting email_validator>=2.0.0 (from fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:58.2749622Z #9 2.095   Downloading email_validator-2.3.0-py3-none-any.whl.metadata (26 kB)
+2025-09-11T23:31:58.2750451Z #9 2.122 Collecting click>=7.0 (from uvicorn==0.30.0->-r requirements.txt (line 2))
+2025-09-11T23:31:58.2751277Z #9 2.129   Downloading click-8.2.1-py3-none-any.whl.metadata (2.5 kB)
+2025-09-11T23:31:58.2752038Z #9 2.141 Collecting h11>=0.8 (from uvicorn==0.30.0->-r requirements.txt (line 2))
+2025-09-11T23:31:58.2752751Z #9 2.148   Downloading h11-0.16.0-py3-none-any.whl.metadata (8.3 kB)
+2025-09-11T23:31:58.2753591Z #9 2.164 Collecting dnspython>=2.0.0 (from email_validator>=2.0.0->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:58.3904004Z #9 2.172   Downloading dnspython-2.8.0-py3-none-any.whl.metadata (5.7 kB)
+2025-09-11T23:31:58.3905163Z #9 2.190 Collecting idna>=2.0.0 (from email_validator>=2.0.0->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:58.3905676Z #9 2.198   Downloading idna-3.10-py3-none-any.whl.metadata (10 kB)
+2025-09-11T23:31:58.3906157Z #9 2.219 Collecting typer>=0.15.1 (from fastapi-cli>=0.0.2->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:58.3906642Z #9 2.226   Downloading typer-0.17.4-py3-none-any.whl.metadata (15 kB)
+2025-09-11T23:31:58.3907140Z #9 2.253 Collecting rich-toolkit>=0.14.8 (from fastapi-cli>=0.0.2->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:58.3907690Z #9 2.260   Downloading rich_toolkit-0.15.1-py3-none-any.whl.metadata (1.0 kB)
+2025-09-11T23:31:58.3908159Z #9 2.279 Collecting anyio (from httpx>=0.23.0->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:58.4957034Z #9 2.287   Downloading anyio-4.10.0-py3-none-any.whl.metadata (4.0 kB)
+2025-09-11T23:31:58.4958662Z #9 2.306 Collecting certifi (from httpx>=0.23.0->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:58.4959991Z #9 2.313   Downloading certifi-2025.8.3-py3-none-any.whl.metadata (2.4 kB)
+2025-09-11T23:31:58.4960546Z #9 2.333 Collecting httpcore==1.* (from httpx>=0.23.0->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:58.4961156Z #9 2.340   Downloading httpcore-1.0.9-py3-none-any.whl.metadata (21 kB)
+2025-09-11T23:31:58.4961785Z #9 2.385 Collecting MarkupSafe>=2.0 (from jinja2>=2.11.2->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:58.6742633Z #9 2.392   Downloading MarkupSafe-3.0.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.0 kB)
+2025-09-11T23:31:58.6744252Z #9 2.405 Collecting annotated-types>=0.6.0 (from pydantic!=1.8,!=1.8.1,!=2.0.0,!=2.0.1,!=2.1.0,<3.0.0,>=1.7.4->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:58.6750986Z #9 2.412   Downloading annotated_types-0.7.0-py3-none-any.whl.metadata (15 kB)
+2025-09-11T23:31:59.0265760Z #9 2.916 Collecting pydantic-core==2.33.2 (from pydantic!=1.8,!=1.8.1,!=2.0.0,!=2.0.1,!=2.1.0,<3.0.0,>=1.7.4->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:59.1316402Z #9 2.924   Downloading pydantic_core-2.33.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (6.8 kB)
+2025-09-11T23:31:59.1319128Z #9 2.938 Collecting typing-inspection>=0.4.0 (from pydantic!=1.8,!=1.8.1,!=2.0.0,!=2.0.1,!=2.1.0,<3.0.0,>=1.7.4->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:59.1322345Z #9 2.945   Downloading typing_inspection-0.4.1-py3-none-any.whl.metadata (2.6 kB)
+2025-09-11T23:31:59.1323677Z #9 2.986 Collecting httptools>=0.5.0 (from uvicorn[standard]>=0.12.0->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:59.1325256Z #9 2.996   Downloading httptools-0.6.4-cp312-cp312-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (3.6 kB)
+2025-09-11T23:31:59.1326617Z #9 3.014 Collecting python-dotenv>=0.13 (from uvicorn[standard]>=0.12.0->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:59.1327866Z #9 3.021   Downloading python_dotenv-1.1.1-py3-none-any.whl.metadata (24 kB)
+2025-09-11T23:31:59.2809236Z #9 3.052 Collecting pyyaml>=5.1 (from uvicorn[standard]>=0.12.0->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:59.2810435Z #9 3.059   Downloading PyYAML-6.0.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (2.1 kB)
+2025-09-11T23:31:59.2811283Z #9 3.103 Collecting uvloop!=0.15.0,!=0.15.1,>=0.14.0 (from uvicorn[standard]>=0.12.0->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:59.2811982Z #9 3.111   Downloading uvloop-0.21.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.9 kB)
+2025-09-11T23:31:59.2812706Z #9 3.169 Collecting watchfiles>=0.13 (from uvicorn[standard]>=0.12.0->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:59.3851459Z #9 3.177   Downloading watchfiles-1.1.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.9 kB)
+2025-09-11T23:31:59.3852530Z #9 3.251 Collecting websockets>=10.4 (from uvicorn[standard]>=0.12.0->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:59.3853799Z #9 3.258   Downloading websockets-15.0.1-cp312-cp312-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (6.8 kB)
+2025-09-11T23:31:59.3854924Z #9 3.274 Collecting sniffio>=1.1 (from anyio->httpx>=0.23.0->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:59.4858317Z #9 3.282   Downloading sniffio-1.3.1-py3-none-any.whl.metadata (3.9 kB)
+2025-09-11T23:31:59.4862523Z #9 3.334 Collecting rich>=13.7.1 (from rich-toolkit>=0.14.8->fastapi-cli>=0.0.2->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:59.4863519Z #9 3.342   Downloading rich-14.1.0-py3-none-any.whl.metadata (18 kB)
+2025-09-11T23:31:59.4864785Z #9 3.368 Collecting shellingham>=1.3.0 (from typer>=0.15.1->fastapi-cli>=0.0.2->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:59.4865839Z #9 3.375   Downloading shellingham-1.5.4-py2.py3-none-any.whl.metadata (3.5 kB)
+2025-09-11T23:31:59.5929163Z #9 3.421 Collecting markdown-it-py>=2.2.0 (from rich>=13.7.1->rich-toolkit>=0.14.8->fastapi-cli>=0.0.2->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:59.5934023Z #9 3.428   Downloading markdown_it_py-4.0.0-py3-none-any.whl.metadata (7.3 kB)
+2025-09-11T23:31:59.5935355Z #9 3.452 Collecting pygments<3.0.0,>=2.13.0 (from rich>=13.7.1->rich-toolkit>=0.14.8->fastapi-cli>=0.0.2->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:59.5936463Z #9 3.459   Downloading pygments-2.19.2-py3-none-any.whl.metadata (2.5 kB)
+2025-09-11T23:31:59.5937651Z #9 3.474 Collecting mdurl~=0.1 (from markdown-it-py>=2.2.0->rich>=13.7.1->rich-toolkit>=0.14.8->fastapi-cli>=0.0.2->fastapi==0.111.0->-r requirements.txt (line 1))
+2025-09-11T23:31:59.5938769Z #9 3.482   Downloading mdurl-0.1.2-py3-none-any.whl.metadata (1.6 kB)
+2025-09-11T23:31:59.7033997Z #9 3.497 Downloading fastapi-0.111.0-py3-none-any.whl (91 kB)
+2025-09-11T23:31:59.7034873Z #9 3.508 Downloading uvicorn-0.30.0-py3-none-any.whl (62 kB)
+2025-09-11T23:31:59.7035479Z #9 3.516 Downloading click-8.2.1-py3-none-any.whl (102 kB)
+2025-09-11T23:31:59.7036114Z #9 3.524 Downloading email_validator-2.3.0-py3-none-any.whl (35 kB)
+2025-09-11T23:31:59.7036774Z #9 3.533 Downloading fastapi_cli-0.0.11-py3-none-any.whl (11 kB)
+2025-09-11T23:31:59.7037376Z #9 3.541 Downloading h11-0.16.0-py3-none-any.whl (37 kB)
+2025-09-11T23:31:59.7037957Z #9 3.548 Downloading httpx-0.28.1-py3-none-any.whl (73 kB)
+2025-09-11T23:31:59.7038858Z #9 3.556 Downloading httpcore-1.0.9-py3-none-any.whl (78 kB)
+2025-09-11T23:31:59.7039490Z #9 3.564 Downloading jinja2-3.1.6-py3-none-any.whl (134 kB)
+2025-09-11T23:31:59.7040303Z #9 3.571 Downloading orjson-3.11.3-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (132 kB)
+2025-09-11T23:31:59.7041135Z #9 3.579 Downloading pydantic-2.11.7-py3-none-any.whl (444 kB)
+2025-09-11T23:31:59.7042271Z #9 3.592 Downloading pydantic_core-2.33.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.0 MB)
+2025-09-11T23:31:59.8049668Z #9 3.602    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.0/2.0 MB 258.0 MB/s eta 0:00:00
+2025-09-11T23:31:59.8050636Z #9 3.611 Downloading python_multipart-0.0.20-py3-none-any.whl (24 kB)
+2025-09-11T23:31:59.8053052Z #9 3.619 Downloading starlette-0.37.2-py3-none-any.whl (71 kB)
+2025-09-11T23:31:59.8053739Z #9 3.627 Downloading typing_extensions-4.15.0-py3-none-any.whl (44 kB)
+2025-09-11T23:31:59.8054791Z #9 3.634 Downloading ujson-5.11.0-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (57 kB)
+2025-09-11T23:31:59.8055658Z #9 3.641 Downloading annotated_types-0.7.0-py3-none-any.whl (13 kB)
+2025-09-11T23:31:59.8056278Z #9 3.648 Downloading anyio-4.10.0-py3-none-any.whl (107 kB)
+2025-09-11T23:31:59.8056873Z #9 3.656 Downloading dnspython-2.8.0-py3-none-any.whl (331 kB)
+2025-09-11T23:31:59.8057897Z #9 3.664 Downloading httptools-0.6.4-cp312-cp312-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl (510 kB)
+2025-09-11T23:31:59.8058903Z #9 3.672 Downloading idna-3.10-py3-none-any.whl (70 kB)
+2025-09-11T23:31:59.8059689Z #9 3.679 Downloading MarkupSafe-3.0.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (23 kB)
+2025-09-11T23:31:59.8060554Z #9 3.686 Downloading python_dotenv-1.1.1-py3-none-any.whl (20 kB)
+2025-09-11T23:31:59.8061370Z #9 3.694 Downloading PyYAML-6.0.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (767 kB)
+2025-09-11T23:31:59.9062998Z #9 3.699    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 767.5/767.5 kB 489.4 MB/s eta 0:00:00
+2025-09-11T23:31:59.9066218Z #9 3.707 Downloading rich_toolkit-0.15.1-py3-none-any.whl (29 kB)
+2025-09-11T23:31:59.9067027Z #9 3.714 Downloading typer-0.17.4-py3-none-any.whl (46 kB)
+2025-09-11T23:31:59.9068214Z #9 3.722 Downloading typing_inspection-0.4.1-py3-none-any.whl (14 kB)
+2025-09-11T23:31:59.9069203Z #9 3.729 Downloading uvloop-0.21.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (4.7 MB)
+2025-09-11T23:31:59.9070337Z #9 3.743    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.7/4.7 MB 422.7 MB/s eta 0:00:00
+2025-09-11T23:31:59.9071253Z #9 3.752 Downloading watchfiles-1.1.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (452 kB)
+2025-09-11T23:31:59.9072485Z #9 3.765 Downloading websockets-15.0.1-cp312-cp312-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl (182 kB)
+2025-09-11T23:31:59.9073333Z #9 3.772 Downloading certifi-2025.8.3-py3-none-any.whl (161 kB)
+2025-09-11T23:31:59.9074584Z #9 3.780 Downloading rich-14.1.0-py3-none-any.whl (243 kB)
+2025-09-11T23:31:59.9075487Z #9 3.788 Downloading shellingham-1.5.4-py2.py3-none-any.whl (9.8 kB)
+2025-09-11T23:31:59.9076386Z #9 3.795 Downloading sniffio-1.3.1-py3-none-any.whl (10 kB)
+2025-09-11T23:32:00.0325649Z #9 3.803 Downloading markdown_it_py-4.0.0-py3-none-any.whl (87 kB)
+2025-09-11T23:32:00.0329227Z #9 3.811 Downloading pygments-2.19.2-py3-none-any.whl (1.2 MB)
+2025-09-11T23:32:00.0330775Z #9 3.816    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.2/1.2 MB 555.4 MB/s eta 0:00:00
+2025-09-11T23:32:00.0331517Z #9 3.824 Downloading mdurl-0.1.2-py3-none-any.whl (10.0 kB)
+2025-09-11T23:32:00.0333893Z #9 3.921 Installing collected packages: websockets, uvloop, ujson, typing-extensions, sniffio, shellingham, pyyaml, python-multipart, python-dotenv, pygments, orjson, mdurl, MarkupSafe, idna, httptools, h11, dnspython, click, certifi, annotated-types, uvicorn, typing-inspection, pydantic-core, markdown-it-py, jinja2, httpcore, email_validator, anyio, watchfiles, starlette, rich, pydantic, httpx, typer, rich-toolkit, fastapi-cli, fastapi
+2025-09-11T23:32:02.5152634Z #9 6.404 Successfully installed MarkupSafe-3.0.2 annotated-types-0.7.0 anyio-4.10.0 certifi-2025.8.3 click-8.2.1 dnspython-2.8.0 email_validator-2.3.0 fastapi-0.111.0 fastapi-cli-0.0.11 h11-0.16.0 httpcore-1.0.9 httptools-0.6.4 httpx-0.28.1 idna-3.10 jinja2-3.1.6 markdown-it-py-4.0.0 mdurl-0.1.2 orjson-3.11.3 pydantic-2.11.7 pydantic-core-2.33.2 pygments-2.19.2 python-dotenv-1.1.1 python-multipart-0.0.20 pyyaml-6.0.2 rich-14.1.0 rich-toolkit-0.15.1 shellingham-1.5.4 sniffio-1.3.1 starlette-0.37.2 typer-0.17.4 typing-extensions-4.15.0 typing-inspection-0.4.1 ujson-5.11.0 uvicorn-0.30.0 uvloop-0.21.0 watchfiles-1.1.0 websockets-15.0.1
+2025-09-11T23:32:02.7306888Z #9 6.404 WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+2025-09-11T23:32:02.7309422Z #9 6.479 
+2025-09-11T23:32:02.7309836Z #9 6.479 [notice] A new release of pip is available: 25.0.1 -> 25.2
+2025-09-11T23:32:02.7310421Z #9 6.479 [notice] To update, run: pip install --upgrade pip
+2025-09-11T23:32:02.7310892Z #9 DONE 6.6s
+2025-09-11T23:32:02.9220544Z 
+2025-09-11T23:32:02.9221362Z #10 [5/5] COPY app ./app
+2025-09-11T23:32:02.9222052Z #10 DONE 0.0s
+2025-09-11T23:32:02.9222963Z 
+2025-09-11T23:32:02.9224740Z #11 exporting to image
+2025-09-11T23:32:02.9225333Z #11 exporting layers
+2025-09-11T23:32:05.0896262Z #11 exporting layers 2.3s done
+2025-09-11T23:32:05.2957543Z #11 ...
+2025-09-11T23:32:05.2957786Z 
+2025-09-11T23:32:05.2958081Z #12 [auth] mainmuck/ci.cdcompany:pull,push token for ghcr.io
+2025-09-11T23:32:05.2958590Z #12 DONE 0.0s
+2025-09-11T23:32:05.2958764Z 
+2025-09-11T23:32:05.2958896Z #11 exporting to image
+2025-09-11T23:32:05.2959593Z #11 exporting manifest sha256:2ab17fa04b294559330ae34f4b917ab711a6177315b3e110752d946be7bb2b5d done
+2025-09-11T23:32:05.2960585Z #11 exporting config sha256:b815c38d37bfc492581f0a015a336a212be8ac057a5f823d602d07212dda32c3 done
+2025-09-11T23:32:05.2961317Z #11 exporting attestation manifest sha256:1f582eba4476a8946c0272e3bf027a837824ce50d1aed56dbe7f057077d0403a done
+2025-09-11T23:32:05.2962089Z #11 exporting manifest list sha256:63ecd8b04338667df3ed68e67b054045e3a620a24941da0f2cddb2fc761976b1 done
+2025-09-11T23:32:05.2962597Z #11 pushing layers
+2025-09-11T23:32:07.7568277Z #11 pushing layers 2.6s done
+2025-09-11T23:32:07.7569335Z #11 pushing manifest for ghcr.io/mainmuck/ci.cdcompany:ci-l1@sha256:63ecd8b04338667df3ed68e67b054045e3a620a24941da0f2cddb2fc761976b1
+2025-09-11T23:32:08.9536934Z #11 pushing manifest for ghcr.io/mainmuck/ci.cdcompany:ci-l1@sha256:63ecd8b04338667df3ed68e67b054045e3a620a24941da0f2cddb2fc761976b1 1.2s done
+2025-09-11T23:32:08.9538449Z #11 DONE 6.2s
+2025-09-11T23:32:08.9925952Z 
+2025-09-11T23:32:08.9927362Z #13 resolving provenance for metadata file
+2025-09-11T23:32:08.9928122Z #13 DONE 0.0s
+2025-09-11T23:32:09.0018922Z ##[group]ImageID
+2025-09-11T23:32:09.0019619Z sha256:63ecd8b04338667df3ed68e67b054045e3a620a24941da0f2cddb2fc761976b1
+2025-09-11T23:32:09.0025218Z ##[endgroup]
+2025-09-11T23:32:09.0025779Z ##[group]Digest
+2025-09-11T23:32:09.0026304Z sha256:63ecd8b04338667df3ed68e67b054045e3a620a24941da0f2cddb2fc761976b1
+2025-09-11T23:32:09.0027125Z ##[endgroup]
+2025-09-11T23:32:09.0027626Z ##[group]Metadata
+2025-09-11T23:32:09.0027908Z {
+2025-09-11T23:32:09.0028214Z   "buildx.build.provenance": {
+2025-09-11T23:32:09.0028606Z     "builder": {
+2025-09-11T23:32:09.0029186Z       "id": "https://github.com/MainMuck/Ci.cdcompany/actions/runs/17659945942/attempts/1"
+2025-09-11T23:32:09.0029819Z     },
+2025-09-11T23:32:09.0030210Z     "buildType": "https://mobyproject.org/buildkit@v1",
+2025-09-11T23:32:09.0030694Z     "materials": [
+2025-09-11T23:32:09.0031065Z       {
+2025-09-11T23:32:09.0031463Z         "uri": "pkg:docker/python@3.12-slim?platform=linux%2Famd64",
+2025-09-11T23:32:09.0032219Z         "digest": {
+2025-09-11T23:32:09.0032713Z           "sha256": "31551bd80310d95ed82a4a14dba8c908c85098f07457e8a5b6a946385cfd86c8"
+2025-09-11T23:32:09.0033279Z         }
+2025-09-11T23:32:09.0033551Z       }
+2025-09-11T23:32:09.0033806Z     ],
+2025-09-11T23:32:09.0034269Z     "invocation": {
+2025-09-11T23:32:09.0034886Z       "configSource": {},
+2025-09-11T23:32:09.0035269Z       "parameters": {
+2025-09-11T23:32:09.0035664Z         "frontend": "dockerfile.v0",
+2025-09-11T23:32:09.0036063Z         "locals": [
+2025-09-11T23:32:09.0036368Z           {
+2025-09-11T23:32:09.0036651Z             "name": "context"
+2025-09-11T23:32:09.0036989Z           },
+2025-09-11T23:32:09.0037258Z           {
+2025-09-11T23:32:09.0037551Z             "name": "dockerfile"
+2025-09-11T23:32:09.0037861Z           }
+2025-09-11T23:32:09.0038097Z         ]
+2025-09-11T23:32:09.0038316Z       },
+2025-09-11T23:32:09.0038567Z       "environment": {
+2025-09-11T23:32:09.0038871Z         "platform": "linux/amd64"
+2025-09-11T23:32:09.0039209Z       }
+2025-09-11T23:32:09.0039430Z     }
+2025-09-11T23:32:09.0039652Z   },
+2025-09-11T23:32:09.0040409Z   "buildx.build.ref": "builder-63c622ec-2dce-466a-a63f-59699647b342/builder-63c622ec-2dce-466a-a63f-59699647b3420/e31ym83pi6606snqlk5le65gg",
+2025-09-11T23:32:09.0041326Z   "containerimage.descriptor": {
+2025-09-11T23:32:09.0041807Z     "mediaType": "application/vnd.oci.image.index.v1+json",
+2025-09-11T23:32:09.0042476Z     "digest": "sha256:63ecd8b04338667df3ed68e67b054045e3a620a24941da0f2cddb2fc761976b1",
+2025-09-11T23:32:09.0043047Z     "size": 856
+2025-09-11T23:32:09.0043285Z   },
+2025-09-11T23:32:09.0043835Z   "containerimage.digest": "sha256:63ecd8b04338667df3ed68e67b054045e3a620a24941da0f2cddb2fc761976b1",
+2025-09-11T23:32:09.0044751Z   "image.name": "ghcr.io/mainmuck/ci.cdcompany:ci-l1"
+2025-09-11T23:32:09.0045198Z }
+2025-09-11T23:32:09.0045681Z ##[endgroup]
+2025-09-11T23:32:09.0046174Z ##[group]Reference
+2025-09-11T23:32:09.0047875Z builder-63c622ec-2dce-466a-a63f-59699647b342/builder-63c622ec-2dce-466a-a63f-59699647b3420/e31ym83pi6606snqlk5le65gg
+2025-09-11T23:32:09.0049727Z ##[endgroup]
+2025-09-11T23:32:09.0050233Z ##[group]Check build summary support
+2025-09-11T23:32:09.0050811Z Build summary supported!
+2025-09-11T23:32:09.0051307Z ##[endgroup]
+2025-09-11T23:32:09.0165639Z ##[group]Run echo "image_ref=ghcr.io/mainmuck/ci.cdcompany@sha256:63ecd8b04338667df3ed68e67b054045e3a620a24941da0f2cddb2fc761976b1" >> "$GITHUB_OUTPUT"
+2025-09-11T23:32:09.0167400Z [36;1mecho "image_ref=ghcr.io/mainmuck/ci.cdcompany@sha256:63ecd8b04338667df3ed68e67b054045e3a620a24941da0f2cddb2fc761976b1" >> "$GITHUB_OUTPUT"[0m
+2025-09-11T23:32:09.0209994Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2025-09-11T23:32:09.0210546Z ##[endgroup]
+2025-09-11T23:32:09.0404543Z ##[group]Run sigstore/cosign-installer@v3
+2025-09-11T23:32:09.0404841Z with:
+2025-09-11T23:32:09.0405025Z   cosign-release: v2.5.2
+2025-09-11T23:32:09.0405241Z   install-dir: $HOME/.cosign
+2025-09-11T23:32:09.0405450Z   use-sudo: false
+2025-09-11T23:32:09.0405630Z ##[endgroup]
+2025-09-11T23:32:09.0479458Z ##[group]Run #!/bin/bash
+2025-09-11T23:32:09.0480154Z [36;1m#!/bin/bash[0m
+2025-09-11T23:32:09.0480366Z [36;1m# cosign install script[0m
+2025-09-11T23:32:09.0480602Z [36;1mshopt -s expand_aliases[0m
+2025-09-11T23:32:09.0480841Z [36;1mif [ -z "$NO_COLOR" ]; then[0m
+2025-09-11T23:32:09.0481145Z [36;1m  alias log_info="echo -e \"\033[1;32mINFO\033[0m:\""[0m
+2025-09-11T23:32:09.0481479Z [36;1m  alias log_error="echo -e \"\033[1;31mERROR\033[0m:\""[0m
+2025-09-11T23:32:09.0481762Z [36;1melse[0m
+2025-09-11T23:32:09.0481952Z [36;1m  alias log_info="echo \"INFO:\""[0m
+2025-09-11T23:32:09.0482212Z [36;1m  alias log_error="echo \"ERROR:\""[0m
+2025-09-11T23:32:09.0482489Z [36;1mfi[0m
+2025-09-11T23:32:09.0482654Z [36;1mset -e[0m
+2025-09-11T23:32:09.0482830Z [36;1m[0m
+2025-09-11T23:32:09.0483002Z [36;1mmkdir -p $HOME/.cosign[0m
+2025-09-11T23:32:09.0483223Z [36;1m[0m
+2025-09-11T23:32:09.0483392Z [36;1mif [[ v2.5.2 == "main" ]]; then[0m
+2025-09-11T23:32:09.0483732Z [36;1m  log_info "installing cosign via 'go install' from its main version"[0m
+2025-09-11T23:32:09.0484261Z [36;1m  GOBIN=$(go env GOPATH)/bin[0m
+2025-09-11T23:32:09.0484575Z [36;1m  go install github.com/sigstore/cosign/v2/cmd/cosign@main[0m
+2025-09-11T23:32:09.0484917Z [36;1m  ln -s $GOBIN/cosign $HOME/.cosign/cosign[0m
+2025-09-11T23:32:09.0485350Z [36;1m  exit 0[0m
+2025-09-11T23:32:09.0485528Z [36;1mfi[0m
+2025-09-11T23:32:09.0485685Z [36;1m[0m
+2025-09-11T23:32:09.0485850Z [36;1mshaprog() {[0m
+2025-09-11T23:32:09.0486049Z [36;1m  case Linux in[0m
+2025-09-11T23:32:09.0486246Z [36;1m    Linux|linux)[0m
+2025-09-11T23:32:09.0486467Z [36;1m      sha256sum $1 | cut -d' ' -f1[0m
+2025-09-11T23:32:09.0486704Z [36;1m      ;;[0m
+2025-09-11T23:32:09.0486882Z [36;1m    macOS|macos)[0m
+2025-09-11T23:32:09.0487100Z [36;1m      shasum -a256 $1 | cut -d' ' -f1[0m
+2025-09-11T23:32:09.0487343Z [36;1m      ;;[0m
+2025-09-11T23:32:09.0487524Z [36;1m    Windows|windows)[0m
+2025-09-11T23:32:09.0487997Z [36;1m      powershell -command "(Get-FileHash $1 -Algorithm SHA256 | Select-Object -ExpandProperty Hash).ToLower()"[0m
+2025-09-11T23:32:09.0488448Z [36;1m      ;;[0m
+2025-09-11T23:32:09.0488625Z [36;1m    *)[0m
+2025-09-11T23:32:09.0488821Z [36;1m      log_error "unsupported OS Linux"[0m
+2025-09-11T23:32:09.0489079Z [36;1m      exit 1[0m
+2025-09-11T23:32:09.0489259Z [36;1m      ;;[0m
+2025-09-11T23:32:09.0489428Z [36;1m  esac[0m
+2025-09-11T23:32:09.0489597Z [36;1m}[0m
+2025-09-11T23:32:09.0489754Z [36;1m[0m
+2025-09-11T23:32:09.0489932Z [36;1mbootstrap_version='v2.5.2'[0m
+2025-09-11T23:32:09.0490368Z [36;1mbootstrap_linux_amd64_sha='bcfeae05557a9f313ee4392d2f335d0ff69ebbfd232019e3736fb04999fe1734'[0m
+2025-09-11T23:32:09.0490984Z [36;1mbootstrap_linux_arm_sha='ecb5b9d8b6d7c8cec98363f0827456fa3207279e5f4690db6b4e6c77b10e45f9'[0m
+2025-09-11T23:32:09.0491579Z [36;1mbootstrap_linux_arm64_sha='2cbcea1873ad76274c3f241ef175d204654e3aac3e73e6ec4504e5227015cb0a'[0m
+2025-09-11T23:32:09.0492184Z [36;1mbootstrap_darwin_amd64_sha='0681abe20a482f4b9b3ed65b3debb8c6346591f2dc484b6bfa79609ff1318de4'[0m
+2025-09-11T23:32:09.0492800Z [36;1mbootstrap_darwin_arm64_sha='51fdc6d8da8310d72df10065a52247b6bebfe990d4c946dd9f71e17588256011'[0m
+2025-09-11T23:32:09.0493407Z [36;1mbootstrap_windows_amd64_sha='fef1c4731da9112d4cf2f6d93ae2a1551c73116a4f73fab7b0c15b38e95ff688'[0m
+2025-09-11T23:32:09.0493862Z [36;1mcosign_executable_name=cosign[0m
+2025-09-11T23:32:09.0494202Z [36;1m[0m
+2025-09-11T23:32:09.0494387Z [36;1mtrap "popd >/dev/null" EXIT[0m
+2025-09-11T23:32:09.0494612Z [36;1m[0m
+2025-09-11T23:32:09.0494787Z [36;1mpushd $HOME/.cosign > /dev/null[0m
+2025-09-11T23:32:09.0495023Z [36;1m[0m
+2025-09-11T23:32:09.0495352Z [36;1mcase Linux in[0m
+2025-09-11T23:32:09.0495562Z [36;1m  Linux|linux)[0m
+2025-09-11T23:32:09.0495757Z [36;1m    case X64 in[0m
+2025-09-11T23:32:09.0495957Z [36;1m      X64|amd64)[0m
+2025-09-11T23:32:09.0496196Z [36;1m        bootstrap_filename='cosign-linux-amd64'[0m
+2025-09-11T23:32:09.0496514Z [36;1m        bootstrap_sha=${bootstrap_linux_amd64_sha}[0m
+2025-09-11T23:32:09.0496951Z [36;1m        desired_cosign_filename='cosign-linux-amd64'[0m
+2025-09-11T23:32:09.0497349Z [36;1m        # v0.6.0 had different filename structures from all other releases[0m
+2025-09-11T23:32:09.0497692Z [36;1m        if [[ v2.5.2 == 'v0.6.0' ]]; then[0m
+2025-09-11T23:32:09.0498030Z [36;1m          desired_cosign_filename='cosign_linux_amd64_0.6.0_linux_amd64'[0m
+2025-09-11T23:32:09.0498466Z [36;1m          desired_cosign_v060_signature='cosign_linux_amd64_0.6.0_linux_amd64.sig'[0m
+2025-09-11T23:32:09.0498810Z [36;1m        fi[0m
+2025-09-11T23:32:09.0498993Z [36;1m        ;;[0m
+2025-09-11T23:32:09.0499167Z [36;1m[0m
+2025-09-11T23:32:09.0499334Z [36;1m      ARM|arm)[0m
+2025-09-11T23:32:09.0499563Z [36;1m        bootstrap_filename='cosign-linux-arm'[0m
+2025-09-11T23:32:09.0499866Z [36;1m        bootstrap_sha=${bootstrap_linux_arm_sha}[0m
+2025-09-11T23:32:09.0500174Z [36;1m        desired_cosign_filename='cosign-linux-arm'[0m
+2025-09-11T23:32:09.0500465Z [36;1m        if [[ v2.5.2 == 'v0.6.0' ]]; then[0m
+2025-09-11T23:32:09.0500769Z [36;1m          log_error "linux-arm build not available at v0.6.0"[0m
+2025-09-11T23:32:09.0501053Z [36;1m          exit 1[0m
+2025-09-11T23:32:09.0501391Z [36;1m        fi[0m
+2025-09-11T23:32:09.0501561Z [36;1m        ;;[0m
+2025-09-11T23:32:09.0501736Z [36;1m[0m
+2025-09-11T23:32:09.0501901Z [36;1m      ARM64|arm64)[0m
+2025-09-11T23:32:09.0502145Z [36;1m        bootstrap_filename='cosign-linux-arm64'[0m
+2025-09-11T23:32:09.0502447Z [36;1m        bootstrap_sha=${bootstrap_linux_arm64_sha}[0m
+2025-09-11T23:32:09.0502773Z [36;1m        desired_cosign_filename='cosign-linux-arm64'[0m
+2025-09-11T23:32:09.0503068Z [36;1m        if [[ v2.5.2 == 'v0.6.0' ]]; then[0m
+2025-09-11T23:32:09.0503370Z [36;1m          log_error "linux-arm64 build not available at v0.6.0"[0m
+2025-09-11T23:32:09.0503666Z [36;1m          exit 1[0m
+2025-09-11T23:32:09.0503855Z [36;1m        fi[0m
+2025-09-11T23:32:09.0504034Z [36;1m        ;;[0m
+2025-09-11T23:32:09.0504310Z [36;1m[0m
+2025-09-11T23:32:09.0504472Z [36;1m      *)[0m
+2025-09-11T23:32:09.0504685Z [36;1m        log_error "unsupported architecture X64"[0m
+2025-09-11T23:32:09.0504954Z [36;1m        exit 1[0m
+2025-09-11T23:32:09.0505145Z [36;1m        ;;[0m
+2025-09-11T23:32:09.0505311Z [36;1m    esac[0m
+2025-09-11T23:32:09.0505482Z [36;1m    ;;[0m
+2025-09-11T23:32:09.0505644Z [36;1m[0m
+2025-09-11T23:32:09.0505813Z [36;1m  macOS|macos)[0m
+2025-09-11T23:32:09.0506007Z [36;1m    case X64 in[0m
+2025-09-11T23:32:09.0506204Z [36;1m      X64|amd64)[0m
+2025-09-11T23:32:09.0506433Z [36;1m        bootstrap_filename='cosign-darwin-amd64'[0m
+2025-09-11T23:32:09.0506742Z [36;1m        bootstrap_sha=${bootstrap_darwin_amd64_sha}[0m
+2025-09-11T23:32:09.0507065Z [36;1m        desired_cosign_filename='cosign-darwin-amd64'[0m
+2025-09-11T23:32:09.0507428Z [36;1m        # v0.6.0 had different filename structures from all other releases[0m
+2025-09-11T23:32:09.0507769Z [36;1m        if [[ v2.5.2 == 'v0.6.0' ]]; then[0m
+2025-09-11T23:32:09.0508101Z [36;1m          desired_cosign_filename='cosign_darwin_amd64_0.6.0_darwin_amd64'[0m
+2025-09-11T23:32:09.0508549Z [36;1m          desired_cosign_v060_signature='cosign_darwin_amd64_0.6.0_darwin_amd64.sig'[0m
+2025-09-11T23:32:09.0508904Z [36;1m        fi[0m
+2025-09-11T23:32:09.0509074Z [36;1m        ;;[0m
+2025-09-11T23:32:09.0509245Z [36;1m[0m
+2025-09-11T23:32:09.0509404Z [36;1m      ARM64|arm64)[0m
+2025-09-11T23:32:09.0509654Z [36;1m        bootstrap_filename='cosign-darwin-arm64'[0m
+2025-09-11T23:32:09.0510108Z [36;1m        bootstrap_sha=${bootstrap_darwin_arm64_sha}[0m
+2025-09-11T23:32:09.0510435Z [36;1m        desired_cosign_filename='cosign-darwin-arm64'[0m
+2025-09-11T23:32:09.0510797Z [36;1m        # v0.6.0 had different filename structures from all other releases[0m
+2025-09-11T23:32:09.0511131Z [36;1m        if [[ v2.5.2 == 'v0.6.0' ]]; then[0m
+2025-09-11T23:32:09.0511459Z [36;1m          desired_cosign_filename='cosign_darwin_arm64_0.6.0_darwin_arm64'[0m
+2025-09-11T23:32:09.0511899Z [36;1m          desired_cosign_v060_signature='cosign_darwin_arm64_0.6.0_darwin_arm64.sig'[0m
+2025-09-11T23:32:09.0512249Z [36;1m        fi[0m
+2025-09-11T23:32:09.0512425Z [36;1m        ;;[0m
+2025-09-11T23:32:09.0512598Z [36;1m[0m
+2025-09-11T23:32:09.0512751Z [36;1m      *)[0m
+2025-09-11T23:32:09.0512974Z [36;1m        log_error "unsupported architecture X64"[0m
+2025-09-11T23:32:09.0513238Z [36;1m        exit 1[0m
+2025-09-11T23:32:09.0513424Z [36;1m        ;;[0m
+2025-09-11T23:32:09.0513597Z [36;1m    esac[0m
+2025-09-11T23:32:09.0513766Z [36;1m    ;;[0m
+2025-09-11T23:32:09.0513934Z [36;1m[0m
+2025-09-11T23:32:09.0514297Z [36;1m  Windows|windows)[0m
+2025-09-11T23:32:09.0514594Z [36;1m    case X64 in[0m
+2025-09-11T23:32:09.0514792Z [36;1m      X64|amd64)[0m
+2025-09-11T23:32:09.0515049Z [36;1m        bootstrap_filename='cosign-windows-amd64.exe'[0m
+2025-09-11T23:32:09.0515372Z [36;1m        bootstrap_sha=${bootstrap_windows_amd64_sha}[0m
+2025-09-11T23:32:09.0515703Z [36;1m        desired_cosign_filename='cosign-windows-amd64.exe'[0m
+2025-09-11T23:32:09.0516024Z [36;1m        cosign_executable_name=cosign.exe[0m
+2025-09-11T23:32:09.0516502Z [36;1m        # v0.6.0 had different filename structures from all other releases[0m
+2025-09-11T23:32:09.0516835Z [36;1m        if [[ v2.5.2 == 'v0.6.0' ]]; then[0m
+2025-09-11T23:32:09.0517184Z [36;1m          desired_cosign_filename='cosign_windows_amd64_0.6.0_windows_amd64.exe'[0m
+2025-09-11T23:32:09.0517679Z [36;1m          desired_cosign_v060_signature='cosign_windows_amd64_0.6.0_windows_amd64.exe.sig'[0m
+2025-09-11T23:32:09.0518049Z [36;1m        fi[0m
+2025-09-11T23:32:09.0518224Z [36;1m        ;;[0m
+2025-09-11T23:32:09.0518400Z [36;1m      *)[0m
+2025-09-11T23:32:09.0518617Z [36;1m        log_error "unsupported architecture X64"[0m
+2025-09-11T23:32:09.0518889Z [36;1m        exit 1[0m
+2025-09-11T23:32:09.0519071Z [36;1m        ;;[0m
+2025-09-11T23:32:09.0519248Z [36;1m    esac[0m
+2025-09-11T23:32:09.0519420Z [36;1m    ;;[0m
+2025-09-11T23:32:09.0519582Z [36;1m  *)[0m
+2025-09-11T23:32:09.0519775Z [36;1m    log_error "unsupported os Linux"[0m
+2025-09-11T23:32:09.0520017Z [36;1m    exit 1[0m
+2025-09-11T23:32:09.0520193Z [36;1m    ;;[0m
+2025-09-11T23:32:09.0520356Z [36;1mesac[0m
+2025-09-11T23:32:09.0520519Z [36;1m[0m
+2025-09-11T23:32:09.0520671Z [36;1mSUDO=[0m
+2025-09-11T23:32:09.0520924Z [36;1mif [[ "false" == "true" ]] && command -v sudo >/dev/null; then[0m
+2025-09-11T23:32:09.0521223Z [36;1m  SUDO=sudo[0m
+2025-09-11T23:32:09.0521411Z [36;1mfi[0m
+2025-09-11T23:32:09.0521577Z [36;1m[0m
+2025-09-11T23:32:09.0521802Z [36;1mexpected_bootstrap_version_digest=${bootstrap_sha}[0m
+2025-09-11T23:32:09.0522650Z [36;1mlog_info "Downloading bootstrap version '${bootstrap_version}' of cosign to verify version to be installed...\n      https://github.com/sigstore/cosign/releases/download/${bootstrap_version}/${bootstrap_filename}"[0m
+2025-09-11T23:32:09.0523758Z [36;1m$SUDO curl -fsL https://github.com/sigstore/cosign/releases/download/${bootstrap_version}/${bootstrap_filename} -o ${cosign_executable_name}[0m
+2025-09-11T23:32:09.0524509Z [36;1mshaBootstrap=$(shaprog ${cosign_executable_name});[0m
+2025-09-11T23:32:09.0524910Z [36;1mif [[ $shaBootstrap != ${expected_bootstrap_version_digest} ]]; then[0m
+2025-09-11T23:32:09.0525311Z [36;1m  log_error "Unable to validate cosign version: 'v2.5.2'"[0m
+2025-09-11T23:32:09.0525608Z [36;1m  exit 1[0m
+2025-09-11T23:32:09.0525781Z [36;1mfi[0m
+2025-09-11T23:32:09.0526109Z [36;1m$SUDO chmod +x ${cosign_executable_name}[0m
+2025-09-11T23:32:09.0526361Z [36;1m[0m
+2025-09-11T23:32:09.0526645Z [36;1m# If the bootstrap and specified `cosign` releases are the same, we're done.[0m
+2025-09-11T23:32:09.0527036Z [36;1mif [[ v2.5.2 == ${bootstrap_version} ]]; then[0m
+2025-09-11T23:32:09.0527509Z [36;1m  log_info "bootstrap version successfully verified and matches requested version so nothing else to do"[0m
+2025-09-11T23:32:09.0527942Z [36;1m  exit 0[0m
+2025-09-11T23:32:09.0528108Z [36;1mfi[0m
+2025-09-11T23:32:09.0528271Z [36;1m[0m
+2025-09-11T23:32:09.0528484Z [36;1msemver='^v([0-9]+\.){0,2}(\*|[0-9]+)(-?r?c?)(\.[0-9]+)$'[0m
+2025-09-11T23:32:09.0528782Z [36;1mif [[ v2.5.2 =~ $semver ]]; then[0m
+2025-09-11T23:32:09.0529072Z [36;1m  log_info "Custom cosign version 'v2.5.2' requested"[0m
+2025-09-11T23:32:09.0529341Z [36;1melse[0m
+2025-09-11T23:32:09.0529611Z [36;1m  log_error "Unable to validate requested cosign version: 'v2.5.2'"[0m
+2025-09-11T23:32:09.0529922Z [36;1m  exit 1[0m
+2025-09-11T23:32:09.0530094Z [36;1mfi[0m
+2025-09-11T23:32:09.0530251Z [36;1m[0m
+2025-09-11T23:32:09.0530425Z [36;1m# Download custom cosign[0m
+2025-09-11T23:32:09.0531049Z [36;1mlog_info "Downloading platform-specific version 'v2.5.2' of cosign...\n      https://github.com/sigstore/cosign/releases/download/v2.5.2/${desired_cosign_filename}"[0m
+2025-09-11T23:32:09.0531969Z [36;1m$SUDO curl -fsL https://github.com/sigstore/cosign/releases/download/v2.5.2/${desired_cosign_filename} -o cosign_v2.5.2[0m
+2025-09-11T23:32:09.0532505Z [36;1mshaCustom=$(shaprog cosign_v2.5.2);[0m
+2025-09-11T23:32:09.0532744Z [36;1m[0m
+2025-09-11T23:32:09.0533062Z [36;1m# same hash means it is the same release[0m
+2025-09-11T23:32:09.0533352Z [36;1mif [[ $shaCustom != $shaBootstrap ]]; then[0m
+2025-09-11T23:32:09.0533648Z [36;1m  if [[ v2.5.2 == 'v0.6.0' && Linux == 'Linux' ]]; then[0m
+2025-09-11T23:32:09.0533988Z [36;1m    # v0.6.0's linux release has a dependency on `libpcsclite1`[0m
+2025-09-11T23:32:09.0534563Z [36;1m    log_info "Installing libpcsclite1 package if necessary..."[0m
+2025-09-11T23:32:09.0534875Z [36;1m    set +e[0m
+2025-09-11T23:32:09.0535074Z [36;1m    sudo dpkg -s libpcsclite1[0m
+2025-09-11T23:32:09.0535322Z [36;1m    if [ $? -eq 0 ]; then[0m
+2025-09-11T23:32:09.0535605Z [36;1m        log_info "libpcsclite1 package is already installed"[0m
+2025-09-11T23:32:09.0535885Z [36;1m    else[0m
+2025-09-11T23:32:09.0536184Z [36;1m         log_info "libpcsclite1 package is not installed, installing it now."[0m
+2025-09-11T23:32:09.0536546Z [36;1m         sudo apt-get update -q -q[0m
+2025-09-11T23:32:09.0536830Z [36;1m         sudo apt-get install -yq libpcsclite1[0m
+2025-09-11T23:32:09.0537082Z [36;1m    fi[0m
+2025-09-11T23:32:09.0537254Z [36;1m    set -e[0m
+2025-09-11T23:32:09.0537433Z [36;1m  fi[0m
+2025-09-11T23:32:09.0537593Z [36;1m[0m
+2025-09-11T23:32:09.0537770Z [36;1m  if [[ v2.5.2 == 'v0.6.0' ]]; then[0m
+2025-09-11T23:32:09.0538452Z [36;1m    log_info "Downloading detached signature for platform-specific 'v2.5.2' of cosign...\n      https://github.com/sigstore/cosign/releases/download/v2.5.2/${desired_cosign_v060_signature}"[0m
+2025-09-11T23:32:09.0539461Z [36;1m    $SUDO curl -fsL https://github.com/sigstore/cosign/releases/download/v2.5.2/${desired_cosign_v060_signature} -o ${desired_cosign_filename}.sig[0m
+2025-09-11T23:32:09.0540020Z [36;1m  else[0m
+2025-09-11T23:32:09.0540620Z [36;1m    log_info "Downloading detached signature for platform-specific 'v2.5.2' of cosign...\n      https://github.com/sigstore/cosign/releases/download/v2.5.2/${desired_cosign_filename}.sig"[0m
+2025-09-11T23:32:09.0541517Z [36;1m    $SUDO curl -fsLO https://github.com/sigstore/cosign/releases/download/v2.5.2/${desired_cosign_filename}.sig[0m
+2025-09-11T23:32:09.0541973Z [36;1m  fi[0m
+2025-09-11T23:32:09.0542139Z [36;1m[0m
+2025-09-11T23:32:09.0542312Z [36;1m  if [[ v2.5.2 < 'v0.6.0' ]]; then[0m
+2025-09-11T23:32:09.0543000Z [36;1m    log_info "Downloading cosign public key 'v2.5.2' of cosign...\n    https://raw.githubusercontent.com/sigstore/cosign/v2.5.2/.github/workflows/cosign.pub"[0m
+2025-09-11T23:32:09.0543829Z [36;1m    RELEASE_COSIGN_PUB_KEY=https://raw.githubusercontent.com/sigstore/cosign/v2.5.2/.github/workflows/cosign.pub[0m
+2025-09-11T23:32:09.0544594Z [36;1m    RELEASE_COSIGN_PUB_KEY_SHA='4aa4bd19530a4929d758a9896255aef2c82f1a3a9f4b000034c6df4307c14f9e'[0m
+2025-09-11T23:32:09.0545007Z [36;1m  else[0m
+2025-09-11T23:32:09.0545521Z [36;1m    log_info "Downloading cosign public key 'v2.5.2' of cosign...\n    https://raw.githubusercontent.com/sigstore/cosign/v2.5.2/release/release-cosign.pub"[0m
+2025-09-11T23:32:09.0546318Z [36;1m    RELEASE_COSIGN_PUB_KEY=https://raw.githubusercontent.com/sigstore/cosign/v2.5.2/release/release-cosign.pub[0m
+2025-09-11T23:32:09.0546973Z [36;1m    RELEASE_COSIGN_PUB_KEY_SHA='f4cea466e5e887a45da5031757fa1d32655d83420639dc1758749b744179f126'[0m
+2025-09-11T23:32:09.0547383Z [36;1m  fi[0m
+2025-09-11T23:32:09.0547544Z [36;1m[0m
+2025-09-11T23:32:09.0547783Z [36;1m  log_info "Verifying public key matches expected value"[0m
+2025-09-11T23:32:09.0548143Z [36;1m  $SUDO curl -fsL $RELEASE_COSIGN_PUB_KEY -o public.key[0m
+2025-09-11T23:32:09.0548467Z [36;1m  sha_fetched_key=$(shaprog public.key)[0m
+2025-09-11T23:32:09.0548789Z [36;1m  if [[ $sha_fetched_key != $RELEASE_COSIGN_PUB_KEY_SHA ]]; then[0m
+2025-09-11T23:32:09.0549201Z [36;1m    log_error "Fetched public key does not match expected digest, exiting"[0m
+2025-09-11T23:32:09.0549543Z [36;1m    exit 1[0m
+2025-09-11T23:32:09.0549718Z [36;1m  fi[0m
+2025-09-11T23:32:09.0549883Z [36;1m[0m
+2025-09-11T23:32:09.0550299Z [36;1m  log_info "Using bootstrap cosign to verify signature of desired cosign version"[0m
+2025-09-11T23:32:09.0550847Z [36;1m  ./cosign verify-blob --key public.key --signature ${desired_cosign_filename}.sig cosign_v2.5.2[0m
+2025-09-11T23:32:09.0551258Z [36;1m[0m
+2025-09-11T23:32:09.0551427Z [36;1m  $SUDO rm cosign[0m
+2025-09-11T23:32:09.0551683Z [36;1m  $SUDO mv cosign_v2.5.2 ${cosign_executable_name}[0m
+2025-09-11T23:32:09.0551988Z [36;1m  $SUDO chmod +x ${cosign_executable_name}[0m
+2025-09-11T23:32:09.0552277Z [36;1m  log_info "Installation complete!"[0m
+2025-09-11T23:32:09.0552515Z [36;1mfi[0m
+2025-09-11T23:32:09.0582131Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2025-09-11T23:32:09.0582454Z ##[endgroup]
+2025-09-11T23:32:09.0653780Z [1;32mINFO[0m: Downloading bootstrap version 'v2.5.2' of cosign to verify version to be installed...
+2025-09-11T23:32:09.0655962Z       https://github.com/sigstore/cosign/releases/download/v2.5.2/cosign-linux-amd64
+2025-09-11T23:32:09.8222228Z [1;32mINFO[0m: bootstrap version successfully verified and matches requested version so nothing else to do
+2025-09-11T23:32:09.8273735Z ##[group]Run echo "$HOME/.cosign" >> $GITHUB_PATH
+2025-09-11T23:32:09.8274058Z [36;1mecho "$HOME/.cosign" >> $GITHUB_PATH[0m
+2025-09-11T23:32:09.8303411Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2025-09-11T23:32:09.8303734Z ##[endgroup]
+2025-09-11T23:32:09.8395829Z ##[group]Run cosign sign --yes "ghcr.io/mainmuck/ci.cdcompany@sha256:63ecd8b04338667df3ed68e67b054045e3a620a24941da0f2cddb2fc761976b1"
+2025-09-11T23:32:09.8396711Z [36;1mcosign sign --yes "ghcr.io/mainmuck/ci.cdcompany@sha256:63ecd8b04338667df3ed68e67b054045e3a620a24941da0f2cddb2fc761976b1"[0m
+2025-09-11T23:32:09.8428114Z shell: /usr/bin/bash -e {0}
+2025-09-11T23:32:09.8428364Z ##[endgroup]
+2025-09-11T23:32:10.0771572Z Generating ephemeral keys...
+2025-09-11T23:32:10.1357690Z Retrieving signed certificate...
+2025-09-11T23:32:10.2949280Z Successfully verified SCT...
+2025-09-11T23:32:10.5397332Z 
+2025-09-11T23:32:10.5400095Z 	The sigstore service, hosted by sigstore a Series of LF Projects, LLC, is provided pursuant to the Hosted Project Tools Terms of Use, available at https://lfprojects.org/policies/hosted-project-tools-terms-of-use/.
+2025-09-11T23:32:10.5404802Z 	Note that if your submission includes personal data associated with this signed artifact, it will be part of an immutable record.
+2025-09-11T23:32:10.5410944Z 	This may include the email address associated with the account with which you authenticate your contractual Agreement.
+2025-09-11T23:32:10.5417448Z 	This information will be used for signing this artifact and will be stored in public transparency logs and cannot be removed later, and is subject to the Immutable Record notice at https://lfprojects.org/policies/hosted-project-tools-immutable-records/.
+2025-09-11T23:32:10.5418814Z 
+2025-09-11T23:32:10.5419670Z By typing 'y', you attest that (1) you are not submitting the personal data of any other person; and (2) you understand and agree to the statement and the Agreement terms at the URLs listed above.
+2025-09-11T23:32:11.2646114Z tlog entry created with index: 502561439
+2025-09-11T23:32:11.2646677Z Pushing signature to: ghcr.io/mainmuck/ci.cdcompany
+2025-09-11T23:32:13.1985057Z ##[group]Run cat > predicate.json <<'JSON'
+2025-09-11T23:32:13.1985618Z [36;1mcat > predicate.json <<'JSON'[0m
+2025-09-11T23:32:13.1986414Z [36;1m{"_type":"https://in-toto.io/Statement/v0.1","predicateType":"https://slsa.dev/provenance/v1",[0m
+2025-09-11T23:32:13.1987361Z [36;1m "predicate":{"builder":{"id":"github-actions"},"buildType":"container-build",[0m
+2025-09-11T23:32:13.1987974Z [36;1m "invocation":{"id":"17659945942",[0m
+2025-09-11T23:32:13.1988696Z [36;1m   "parameters":{"repo":"MainMuck/Ci.cdcompany","sha":"bbaa21cda10e46ef902f543d59d59b87f8929c6c"}}}}[0m
+2025-09-11T23:32:13.1989391Z [36;1mJSON[0m
+2025-09-11T23:32:13.2033190Z shell: /usr/bin/bash -e {0}
+2025-09-11T23:32:13.2033582Z ##[endgroup]
+2025-09-11T23:32:13.2174612Z ##[group]Run anchore/sbom-action@v0
+2025-09-11T23:32:13.2175048Z with:
+2025-09-11T23:32:13.2175351Z   format: cyclonedx-json
+2025-09-11T23:32:13.2175720Z   output-file: sbom.cdx.json
+2025-09-11T23:32:13.2176072Z   path: .
+2025-09-11T23:32:13.2176561Z   github-token: ***
+2025-09-11T23:32:13.2176902Z   dependency-snapshot: false
+2025-09-11T23:32:13.2177290Z   upload-artifact: true
+2025-09-11T23:32:13.2177650Z   upload-artifact-retention: 0
+2025-09-11T23:32:13.2178039Z   upload-release-assets: true
+2025-09-11T23:32:13.2178390Z ##[endgroup]
+2025-09-11T23:32:13.4295904Z ------------------------------ Running SBOM Action -----------------------------
+2025-09-11T23:32:13.5144237Z [command]/usr/bin/sh /home/runner/work/_temp/43ae2655-c518-4111-92a0-1e7d98f27877 -d -b /home/runner/work/_temp/43ae2655-c518-4111-92a0-1e7d98f27877_syft v1.31.0
+2025-09-11T23:32:13.5197082Z [info] checking github for release tag='v1.31.0' 
+2025-09-11T23:32:13.5235546Z [debug] http_download(url=https://github.com/anchore/syft/releases/v1.31.0) 
+2025-09-11T23:32:13.5891680Z [info] fetching release script for tag='v1.31.0' 
+2025-09-11T23:32:13.5917144Z [debug] http_download(url=https://get.anchore.io/syft/v1.31.0/install.sh) 
+2025-09-11T23:32:13.7478771Z [info] checking github for release tag='v1.31.0' 
+2025-09-11T23:32:13.7516259Z [debug] http_download(url=https://github.com/anchore/syft/releases/v1.31.0) 
+2025-09-11T23:32:13.8380706Z [info] using release tag='v1.31.0' version='1.31.0' os='linux' arch='amd64' 
+2025-09-11T23:32:13.8403842Z [debug] downloading files into /tmp/tmp.Od1Rpo8gt1 
+2025-09-11T23:32:13.8441264Z [debug] http_download(url=https://github.com/anchore/syft/releases/download/v1.31.0/syft_1.31.0_checksums.txt) 
+2025-09-11T23:32:13.9391553Z [debug] http_download(url=https://github.com/anchore/syft/releases/download/v1.31.0/syft_1.31.0_linux_amd64.tar.gz) 
+2025-09-11T23:32:14.5904303Z [info] installed /home/runner/work/_temp/43ae2655-c518-4111-92a0-1e7d98f27877_syft/syft 
+2025-09-11T23:32:14.6604330Z [command]/opt/hostedtoolcache/syft/1.31.0/x64/syft scan dir:. -o cyclonedx-json
+2025-09-11T23:32:14.6606974Z ##[group]Executing Syft...
+2025-09-11T23:32:14.6905660Z [0000]  WARN no explicit name and version provided for directory source, deriving artifact ID from the given path (which is not ideal)
+2025-09-11T23:32:14.6906465Z 
+2025-09-11T23:32:15.5600644Z ##[endgroup]
+2025-09-11T23:32:15.5601952Z SBOM scan completed in: 2.131s
+2025-09-11T23:32:15.5705851Z ------------------------- Uploading workflow artifacts -------------------------
+2025-09-11T23:32:15.5706605Z /tmp/sbom-action-TvoMfP/Ci.cdcompany-build_and_sign.cyclonedx.json
+2025-09-11T23:32:15.8637961Z ##[group]Run set -euo pipefail
+2025-09-11T23:32:15.8638276Z [36;1mset -euo pipefail[0m
+2025-09-11T23:32:15.8638816Z [36;1mecho "ghcr.io/mainmuck/ci.cdcompany@sha256:63ecd8b04338667df3ed68e67b054045e3a620a24941da0f2cddb2fc761976b1" > IMAGE_DIGEST.txt[0m
+2025-09-11T23:32:15.8639422Z [36;1msha256sum sbom.cdx.json > sbom.cdx.json.sha256[0m
+2025-09-11T23:32:15.8639785Z [36;1msha256sum predicate.json > predicate.json.sha256[0m
+2025-09-11T23:32:15.8640069Z [36;1m{[0m
+2025-09-11T23:32:15.8640482Z [36;1m  printf "artifact=IMAGE\tdigest=%s\n" "sha256:63ecd8b04338667df3ed68e67b054045e3a620a24941da0f2cddb2fc761976b1"[0m
+2025-09-11T23:32:15.8641080Z [36;1m  printf "artifact=sbom.cdx.json\tsha256=%s\n" "$(cut -d' ' -f1 sbom.cdx.json.sha256)"[0m
+2025-09-11T23:32:15.8641600Z [36;1m  printf "artifact=predicate.json\tsha256=%s\n" "$(cut -d' ' -f1 predicate.json.sha256)"[0m
+2025-09-11T23:32:15.8641983Z [36;1m} > checksums.txt[0m
+2025-09-11T23:32:15.8671196Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2025-09-11T23:32:15.8671517Z env:
+2025-09-11T23:32:15.8671828Z   ANCHORE_SBOM_ACTION_PRIOR_ARTIFACT: Ci.cdcompany-build_and_sign.cyclonedx.json
+2025-09-11T23:32:15.8672191Z ##[endgroup]
+2025-09-11T23:32:15.8827072Z ##[group]Run actions/upload-artifact@v4
+2025-09-11T23:32:15.8827344Z with:
+2025-09-11T23:32:15.8827530Z   name: c1-m1-l1-checks
+2025-09-11T23:32:15.8828141Z   path: IMAGE_DIGEST.txt
+checksums.txt
+sbom.cdx.json
+sbom.cdx.json.sha256
+predicate.json
+predicate.json.sha256
+
+2025-09-11T23:32:15.8828611Z   if-no-files-found: warn
+2025-09-11T23:32:15.8828822Z   compression-level: 6
+2025-09-11T23:32:15.8829021Z   overwrite: false
+2025-09-11T23:32:15.8829213Z   include-hidden-files: false
+2025-09-11T23:32:15.8829425Z env:
+2025-09-11T23:32:15.8829716Z   ANCHORE_SBOM_ACTION_PRIOR_ARTIFACT: Ci.cdcompany-build_and_sign.cyclonedx.json
+2025-09-11T23:32:15.8830068Z ##[endgroup]
+2025-09-11T23:32:16.1210046Z Multiple search paths detected. Calculating the least common ancestor of all paths
+2025-09-11T23:32:16.1217643Z The least common ancestor is /home/runner/work/Ci.cdcompany/Ci.cdcompany. This will be the root directory of the artifact
+2025-09-11T23:32:16.1219931Z With the provided path, there will be 6 files uploaded
+2025-09-11T23:32:16.1222125Z Artifact name is valid!
+2025-09-11T23:32:16.1224828Z Root directory input is valid!
+2025-09-11T23:32:16.2220741Z Beginning upload of artifact content to blob storage
+2025-09-11T23:32:16.2990569Z Uploaded bytes 3013
+2025-09-11T23:32:16.3188929Z Finished uploading artifact content to blob storage!
+2025-09-11T23:32:16.3192375Z SHA256 digest of uploaded artifact zip is 84f2317318bc128d6ffcaa1ec39abc53857e7f2254f3ba3b59c4bf78525051c4
+2025-09-11T23:32:16.3194654Z Finalizing artifact upload
+2025-09-11T23:32:16.4361330Z Artifact c1-m1-l1-checks.zip successfully finalized. Artifact ID 3991457865
+2025-09-11T23:32:16.4362556Z Artifact c1-m1-l1-checks has been successfully uploaded! Final size is 3013 bytes. Artifact ID is 3991457865
+2025-09-11T23:32:16.4364598Z Artifact download URL: https://github.com/MainMuck/Ci.cdcompany/actions/runs/17659945942/artifacts/3991457865
+2025-09-11T23:32:16.4506070Z Post job cleanup.
+2025-09-11T23:32:16.7710747Z ##[group]Generating build summary
+2025-09-11T23:32:16.7719581Z exporting build record to /home/runner/work/_temp/docker-actions-toolkit-Ec3Fjj/export
+2025-09-11T23:32:16.9767015Z [command]/usr/bin/docker buildx history export --builder builder-63c622ec-2dce-466a-a63f-59699647b342 --output /home/runner/work/_temp/docker-actions-toolkit-Ec3Fjj/export/MainMuck~Ci.cdcompany~E31YM8.dockerbuild e31ym83pi6606snqlk5le65gg --finalize
+2025-09-11T23:32:17.2110143Z Build record written to /home/runner/work/_temp/docker-actions-toolkit-Ec3Fjj/export/MainMuck~Ci.cdcompany~E31YM8.dockerbuild (38.82 KB)
+2025-09-11T23:32:17.2155126Z Uploading MainMuck~Ci.cdcompany~E31YM8.dockerbuild to blob storage
+2025-09-11T23:32:17.3124987Z Beginning upload of artifact content to blob storage
+2025-09-11T23:32:17.3226475Z Uploaded bytes 39750
+2025-09-11T23:32:17.3711765Z Finished uploading artifact content to blob storage!
+2025-09-11T23:32:17.3717988Z SHA256 hash of uploaded artifact is 299f896567be09375a3e09c291ff1efe6a14666226f042d60666299dd0e48c84
+2025-09-11T23:32:17.3719455Z Finalizing artifact upload
+2025-09-11T23:32:17.4889070Z Artifact successfully finalized (3991457947)
+2025-09-11T23:32:17.4890068Z Artifact download URL: https://github.com/MainMuck/Ci.cdcompany/actions/runs/17659945942/artifacts/3991457947
+2025-09-11T23:32:17.4916247Z Writing summary
+2025-09-11T23:32:17.4931529Z ##[endgroup]
+2025-09-11T23:32:17.4932908Z ##[group]Removing temp folder /home/runner/work/_temp/docker-actions-toolkit-4klUTQ
+2025-09-11T23:32:17.4943915Z ##[endgroup]
+2025-09-11T23:32:17.4947195Z ##[group]Post cache
+2025-09-11T23:32:17.4947517Z State not set
+2025-09-11T23:32:17.4948017Z ##[endgroup]
+2025-09-11T23:32:17.5092163Z Post job cleanup.
+2025-09-11T23:32:17.8312284Z ##[group]Removing builder
+2025-09-11T23:32:17.9393549Z [command]/usr/bin/docker buildx rm builder-63c622ec-2dce-466a-a63f-59699647b342
+2025-09-11T23:32:18.8744635Z builder-63c622ec-2dce-466a-a63f-59699647b342 removed
+2025-09-11T23:32:18.8763772Z ##[endgroup]
+2025-09-11T23:32:18.8765858Z ##[group]Cleaning up certificates
+2025-09-11T23:32:18.8772466Z ##[endgroup]
+2025-09-11T23:32:18.8774512Z ##[group]Post cache
+2025-09-11T23:32:18.8776237Z State not set
+2025-09-11T23:32:18.8777732Z ##[endgroup]
+2025-09-11T23:32:18.8919153Z Post job cleanup.
+2025-09-11T23:32:19.2564882Z [command]/usr/bin/docker logout ghcr.io
+2025-09-11T23:32:19.2705595Z Removing login credentials for ghcr.io
+2025-09-11T23:32:19.2759120Z ##[group]Post cache
+2025-09-11T23:32:19.2759438Z State not set
+2025-09-11T23:32:19.2759919Z ##[endgroup]
+2025-09-11T23:32:19.2890352Z Post job cleanup.
+2025-09-11T23:32:19.3945379Z [command]/usr/bin/git version
+2025-09-11T23:32:19.4031433Z git version 2.51.0
+2025-09-11T23:32:19.4113610Z Temporarily overriding HOME='/home/runner/work/_temp/25768a12-3bad-4322-8114-11edacd4132a' before making global git config changes
+2025-09-11T23:32:19.4116141Z Adding repository directory to the temporary git global config as a safe directory
+2025-09-11T23:32:19.4121965Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/Ci.cdcompany/Ci.cdcompany
+2025-09-11T23:32:19.4185913Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2025-09-11T23:32:19.4237739Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2025-09-11T23:32:19.4526269Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2025-09-11T23:32:19.4551889Z http.https://github.com/.extraheader
+2025-09-11T23:32:19.4566698Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2025-09-11T23:32:19.4601365Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2025-09-11T23:32:19.4945524Z Evaluate and set job outputs
+2025-09-11T23:32:19.4950846Z Set output 'image_ref'
+2025-09-11T23:32:19.4952459Z Set output 'image'
+2025-09-11T23:32:19.4953388Z Cleaning up orphan processes

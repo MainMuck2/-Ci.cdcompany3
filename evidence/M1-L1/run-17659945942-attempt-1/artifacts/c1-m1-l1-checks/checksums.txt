@@ -1,0 +1,3 @@
+artifact=IMAGE	digest=sha256:63ecd8b04338667df3ed68e67b054045e3a620a24941da0f2cddb2fc761976b1
+artifact=sbom.cdx.json	sha256=dab1401f5a96d260fd747dc9a8152d030a37de5dae98c9a439e2424ac1853473
+artifact=predicate.json	sha256=aa74d9668400cfacf82a67f3ffb76e572a7b0151c9b08dc173908ff95c4c7447

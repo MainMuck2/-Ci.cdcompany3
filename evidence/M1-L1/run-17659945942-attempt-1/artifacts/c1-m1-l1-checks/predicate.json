@@ -1,0 +1,4 @@
+{"_type":"https://in-toto.io/Statement/v0.1","predicateType":"https://slsa.dev/provenance/v1",
+ "predicate":{"builder":{"id":"github-actions"},"buildType":"container-build",
+ "invocation":{"id":"17659945942",
+   "parameters":{"repo":"MainMuck/Ci.cdcompany","sha":"bbaa21cda10e46ef902f543d59d59b87f8929c6c"}}}}
