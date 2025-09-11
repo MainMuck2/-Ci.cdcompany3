@@ -1,0 +1,117 @@
+name: L1 build, sign (keyless), verify (non-blocking)
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  unit_tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pytest
+      - run: pytest -q
+
+  build_and_sign:
+    needs: unit_tests
+    runs-on: ubuntu-latest
+    outputs:
+      image_ref: ${{ steps.compute.outputs.image_ref }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image (by digest)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ env.IMAGE }}:ci-l1
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true
+
+      - name: Compute image ref
+        id: compute
+        run: echo "image_ref=${{ env.IMAGE }}@${{ steps.build.outputs.digest }}" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Keyless sign (Fulcio/Rekor)
+        env: { COSIGN_EXPERIMENTAL: "true" }
+        run: cosign sign --yes --keyless "${{ steps.compute.outputs.image_ref }}"
+
+      - name: Create minimal provenance predicate
+        run: |
+          cat > predicate.json <<'JSON'
+          {
+            "_type": "https://in-toto.io/Statement/v0.1",
+            "predicateType": "https://slsa.dev/provenance/v1",
+            "predicate": {
+              "builder": {"id": "github-actions"},
+              "buildType": "container-build",
+              "invocation": {
+                "id": "${{ github.run_id }}",
+                "parameters": {"repo": "${{ github.repository }}", "sha": "${{ github.sha }}"}
+              }
+            }
+          }
+          JSON
+
+      - name: Attach attestation (keyless)
+        env: { COSIGN_EXPERIMENTAL: "true" }
+        run: cosign attest --yes --keyless --type slsaprovenance --predicate predicate.json "${{ steps.compute.outputs.image_ref }}"
+
+      - name: Generate SBOM (CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: l1-artifacts
+          path: |
+            sbom.cdx.json
+            predicate.json
+
+  verify_non_blocking:
+    needs: build_and_sign
+    runs-on: ubuntu-latest
+    steps:
+      - uses: sigstore/cosign-installer@v3
+      - name: Verify signature (WARN-only)
+        continue-on-error: true
+        run: |
+          cosign verify "${{ needs.build_and_sign.outputs.image_ref }}" || \
+          echo "::warning ::signature verify failed (L1 non-blocking)"
+      - name: Verify attestation presence (WARN-only)
+        continue-on-error: true
+        run: |
+          cosign verify-attestation --type slsaprovenance \
+            "${{ needs.build_and_sign.outputs.image_ref }}" || \
+          echo "::warning ::attestation verify failed (L1 non-blocking)"
