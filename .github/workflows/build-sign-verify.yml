@@ -190,17 +190,17 @@ jobs:
       actions: read
 
     steps:
-    # [INFRA][EVIDENCE] Берём репозиторий (дефолтную ветку), потом переключимся на evidence
+      # [INFRA][EVIDENCE] Берём репозиторий (дефолтную ветку), потом переключимся на evidence
       - name: Checkout default branch [INFRA][EVIDENCE]
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-    # [INFRA][EVIDENCE] Создаём/переключаемся на ветку evidence (если нет — будет создана)
+      # [INFRA][EVIDENCE] Создаём/переключаемся на ветку evidence (если нет — будет создана)
       - name: Switch/Create evidence branch [INFRA][EVIDENCE]
         run: git checkout -B evidence
 
-    # [INFRA][EVIDENCE] Готовим каталог для ТЕКУЩЕГО run + attempt (чтобы re-run не перетирал)
+      # [INFRA][EVIDENCE] Готовим каталог для ТЕКУЩЕГО run + attempt (чтобы re-run не перетирал)
       - name: Prepare destination [INFRA][EVIDENCE]
         id: prep
         run: |
@@ -213,7 +213,7 @@ jobs:
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
           echo "attempt=$ATTEMPT" >> "$GITHUB_OUTPUT"
 
-    # [INFRA][EVIDENCE] ЛОГИ КАЖДОГО JOB (unit_tests, build_and_sign, verify_non_blocking и т.д.)
+      # [INFRA][EVIDENCE] ЛОГИ КАЖДОГО JOB (unit_tests, build_and_sign, verify_non_blocking и т.д.)
       - name: Download job logs (ZIP per job) [INFRA][EVIDENCE]
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -227,7 +227,7 @@ jobs:
           API="https://api.github.com/repos/${OWNER_REPO}/actions/runs/${RUN_ID}/jobs?per_page=100"
           mkdir -p "${{ steps.prep.outputs.dest }}/logs"
 
-           HTTP=$(curl -sSL -w "%{http_code}" \
+          HTTP=$(curl -sSL -w "%{http_code}" \
                  -H "Authorization: Bearer $GH_TOKEN" \
                  -H "Accept: application/vnd.github+json" \
                  "$API" -o jobs.json)
@@ -236,7 +236,7 @@ jobs:
             exit 0
           fi
 
-           jq -r '.jobs[] | "\(.id)\t\(.name)"' jobs.json | while IFS=$'\t' read -r JID JNAME; do
+          jq -r '.jobs[] | "\(.id)\t\(.name)"' jobs.json | while IFS=$'\t' read -r JID JNAME; do
             [ "$JNAME" = "persist_evidence" ] && continue
             SAFE_NAME=$(echo "$JNAME" | tr ' /' '__')
             curl -sSL \
@@ -257,7 +257,7 @@ jobs:
             "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/logs" \
             -o "${{ steps.prep.outputs.dest }}/logs-${{ github.run_id }}.zip" || true
 
-    # [К1][М1][Л1][EVIDENCE] СКАЧИВАЕМ ТОЛЬКО УКАЗАННЫЕ АРТЕФАКТЫ.
+      # [К1][М1][Л1][EVIDENCE] СКАЧИВАЕМ ТОЛЬКО УКАЗАННЫЕ АРТЕФАКТЫ.
       - name: Download artifact c1-m1-l1-checks [К1][М1][Л1][EVIDENCE]
         uses: actions/download-artifact@v4
         continue-on-error: true
@@ -266,7 +266,7 @@ jobs:
           run-id: ${{ github.run_id }}
           path: ${{ steps.prep.outputs.dest }}/artifacts/c1-m1-l1-checks
 
-    # [INFRA][EVIDENCE] Снимок текущего workflow YAML (для трассируемости)
+      # [INFRA][EVIDENCE] Снимок текущего workflow YAML (для трассируемости)
       - name: Snapshot workflow file [INFRA][EVIDENCE]
         run: |
           mkdir -p "${{ steps.prep.outputs.dest }}/workflow"
