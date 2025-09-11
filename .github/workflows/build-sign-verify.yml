@@ -177,7 +177,7 @@ jobs:
           sha256sum -c sbom.cdx.json.sha256
           sha256sum -c predicate.json.sha256 
       
-persist_evidence:
+  persist_evidence:
     # [INFRA][EVIDENCE] Пишем доказательства ТОЛЬКО если весь ран прошёл успешно.
     # PR из форка пропускаем (там нет прав пушить в репо).
     needs: [verify_non_blocking]
