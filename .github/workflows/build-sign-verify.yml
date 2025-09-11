@@ -48,12 +48,12 @@ jobs:
       # [К1][М1][Л1] Зачем: получить исходники.
       - uses: actions/checkout@v4
 
-      # [К1][М1][Л1] Зачем: вычислить имя образа GHCR АВТОМАТИЧЕСКИ (нижний регистр).
+      # [К1][М1][Л1] Зачем: вычислить имя образа GHCR АВТОМАТИЧЕСКИ (нижний регистр) через bash.
       - name: Compute IMAGE (auto, lowercase) [К1][М1][Л1]
         id: img
         shell: bash
         run: |
-          echo "image=ghcr.io/${{ toLower(github.repository) }}" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
       # [К1][М1][Л1] Зачем: авторизация для публикации образа в GHCR.
       - name: Login to GHCR [К1][М1][Л1]
@@ -158,7 +158,7 @@ jobs:
         id: trust
         shell: bash
         run: |
-          echo "CERT_IDENTITY=https://github.com/${{ github.workflow_ref }}" >> "$GITHUB_OUTPUT"
+          echo "CERT_IDENTITY=https://github.com/${GITHUB_WORKFLOW_REF}" >> "$GITHUB_OUTPUT"
           echo "OIDC_ISSUER=https://token.actions.githubusercontent.com" >> "$GITHUB_OUTPUT"
 
       # [К1][М1][Л1] verify(SIG) — WARN-only: проверяем подпись по локальному trust-store.
