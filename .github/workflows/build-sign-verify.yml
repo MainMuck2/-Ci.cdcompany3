@@ -258,7 +258,7 @@ jobs:
             -o "${{ steps.prep.outputs.dest }}/logs-${{ github.run_id }}.zip" || true
 
     # [К1][М1][Л1][EVIDENCE] СКАЧИВАЕМ ТОЛЬКО УКАЗАННЫЕ АРТЕФАКТЫ.
-      - name: Download artifact: c1-m1-l1-checks [К1][М1][Л1][EVIDENCE]
+      - name: Download artifact c1-m1-l1-checks [К1][М1][Л1][EVIDENCE]
         uses: actions/download-artifact@v4
         continue-on-error: true
         with:
