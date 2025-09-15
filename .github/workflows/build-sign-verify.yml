@@ -45,28 +45,21 @@ jobs:
           echo "hello $(date -u +%FT%TZ)" > artifact.txt
           sha256sum artifact.txt | tee checksums.txt
 
-      - name: Export SBOM (SPDX) for current commit
+      - n      - name: Export SBOM (SPDX) for current commit
         # Требует: Settings → Code security → Dependency graph + Automatic dependency submission = ON
-        # В warn/pass режимах не валим пайплайн, просто предупреждаем если API недоступно
-        shell: bash
         run: |
           set -e
-          if gh api -H "Accept: application/vnd.github+json" \
-               repos/${{ github.repository }}/dependency-graph/sbom \
-               -f ref=${{ github.sha }} > sbom.spdx.json ; then
-            echo "SBOM exported to sbom.spdx.json"
-          else
-            if [ "${ENFORCEMENT}" = "block" ]; then
-              echo "SBOM export failed and ENFORCEMENT=block ⇒ BLOCK"
-              exit 1
-            else
-              echo "::warning::SBOM export failed. Enable Dependency graph + Automatic dependency submission in Settings → Code security"
-              # создадим пустышку, чтобы последующие шаги не ломались
-              echo '{"spdxVersion":"SPDX-2.3","packages":[]}' > sbom.spdx.json
-            fi
-          fi
+          # тянем SBOM с API и извлекаем чистый документ из поля .sbom
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            repos/${{ github.repository }}/dependency-graph/sbom \
+            -f ref=${{ github.sha }} | jq '.sbom' > sbom.spdx.json
+
+          # быстрая проверка: должен напечатать SPDx версию
+          jq -r '.spdxVersion' sbom.spdx.json
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
       - name: Upload artifact (for record)
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
