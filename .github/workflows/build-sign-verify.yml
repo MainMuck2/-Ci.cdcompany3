@@ -2,8 +2,10 @@ name: GA Security Controls (Pass/Warn/Block)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "release/*" ]
   pull_request:
+    branches: [ "main", "release/*" ]
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       enforcement:
@@ -21,10 +23,10 @@ permissions:
   attestations: write
 
 env:
-  # безопасная инициализация, чтобы не падать на push/PR без inputs
-  ENFORCEMENT: ${{ (github.event_name == 'workflow_dispatch' && inputs.enforcement) || 'warn' }}
+  # По умолчанию: на main → block, на остальных → warn (можно переопределить при ручном запуске)
+  ENFORCEMENT: ${{ (github.event_name == 'workflow_dispatch' && inputs.enforcement) || (github.ref_name == github.event.repository.default_branch && 'block' || 'warn') }}
 
-# ОДНО РЕШЕНИЕ: один конвейер на ветку (push и PR этой же ветки не параллелятся)
+# Один конвейер на ветку (PR и push одной ветки не параллелятся)
 concurrency:
   group: sec-${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
@@ -53,16 +55,16 @@ jobs:
       - name: Analyze
         uses: github/codeql-action/analyze@192325c86100d080feab897ff886c34abd4c83a3
 
-  # =================== Build + SBOM + Attest + Verify (артефакт) ===================
+  # ============ Build + SBOM + (Attest/Verify только на push) ============
   build_and_attest:
-    name: Build + SBOM + Attest + Verify
+    name: Build + SBOM + (Attest/Verify on push)
     runs-on: ubuntu-latest
     needs: [ codeql ]
     steps:
       - name: Checkout
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
-      - name: Ensure jq present (fallback)
+      - name: Ensure jq present
         run: |
           command -v jq >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y jq)
 
@@ -72,7 +74,7 @@ jobs:
           echo "hello $(date -u +%FT%TZ)" > artifact.txt
           sha256sum artifact.txt | tee checksums.txt
 
-      - name: Export SBOM (SPDX) for current commit (API → fallback Syft)
+      - name: Export SBOM (SPDX) via API, else fallback to Syft
         id: sbom
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -80,7 +82,7 @@ jobs:
         run: |
           set -euo pipefail
           tmp=$(mktemp)
-          echo "→ Пытаюсь получить SBOM из GitHub Dependency Graph API для ${GITHUB_SHA}"
+          echo "→ Получаю SBOM из Dependency Graph API для ${GITHUB_SHA}"
           if gh api \
                -H "Accept: application/vnd.github+json" \
                -H "X-GitHub-Api-Version: 2022-11-28" \
@@ -91,15 +93,13 @@ jobs:
           then
             mv "$tmp" sbom.spdx.json
             echo "source=github-api" >> "$GITHUB_OUTPUT"
-            echo "✓ Получен официальный SPDX из API"
           else
-            echo "::warning::SBOM API недоступен (404/граф не готов). Перехожу на локальную генерацию."
+            echo "::warning::SBOM API недоступен (404/задержка индексации). Генерирую локально Syft."
             rm -f "$tmp"
             curl -sSfL https://get.anchore.io/syft | sudo sh -s -- -b /usr/local/bin
             syft dir:. -o spdx-json=sbom.spdx.json
             jq -e -r '.spdxVersion' sbom.spdx.json >/dev/null
             echo "source=syft" >> "$GITHUB_OUTPUT"
-            echo "✓ Сгенерирован локальный SPDX (Syft)"
           fi
           jq -r '.spdxVersion' sbom.spdx.json
 
@@ -112,19 +112,24 @@ jobs:
             checksums.txt
             sbom.spdx.json
 
+      # --- Ниже шаги ТОЛЬКО на push (записи/аттестации и verify) ---
       - name: Attest build provenance (SLSA)
+        if: github.event_name == 'push'
         uses: actions/attest-build-provenance@ef244123eb79f2f7a7e75d99086184180e6d0018
         with:
           subject-path: artifact.txt
 
       - name: Attest SBOM (bind to subject digest)
+        if: github.event_name == 'push'
         uses: actions/attest-sbom@5026d3663739160db546203eeaffa6aa1c51a4d6
         with:
           subject-path: artifact.txt
           sbom-path: sbom.spdx.json
 
-      - name: Verify attestations before "promote/deploy"
-        # BLOCK => fail, WARN/PASS => предупреждение
+      - name: Verify attestations (pre-promote)
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -136,8 +141,6 @@ jobs:
               echo "::warning::Attestation verify failed ⇒ WARN mode"
             fi
           fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # =================== SCA gate (Dependency Review) — только PR ===================
   dependency_review:
@@ -156,8 +159,8 @@ jobs:
         continue-on-error: ${{ env.ENFORCEMENT != 'block' }}
 
   # ===== Secret scanning / Push protection (печатаем и, при block, валим если off) =====
-  secret_scanning_presence:
-    name: Secret scanning (presence & push protection)
+  security_settings_guard:
+    name: Secret scanning / Push protection / DG / ADS
     runs-on: ubuntu-latest
     steps:
       - name: Check repo security_and_analysis flags
@@ -186,8 +189,8 @@ jobs:
   # =================== Promote → production (env approval в UI) ===================
   promote_to_prod:
     name: Promote → production (requires env approval)
-    needs: [ codeql, build_and_attest, secret_scanning_presence ]
-    if: ${{ always() && (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main') }}
+    needs: [ codeql, build_and_attest, security_settings_guard ]
+    if: ${{ always() && github.event_name == 'push' && startsWith(github.ref, 'refs/heads/main') }}
     runs-on: ubuntu-latest
     environment:
       name: production   # в UI включи Required reviewers (и запрет self-approval)
