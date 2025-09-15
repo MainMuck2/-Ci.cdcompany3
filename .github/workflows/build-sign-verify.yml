@@ -19,20 +19,20 @@ permissions:
   contents: read
   packages: read
   security-events: read
-  id-token: write     # для OIDC и attestations
+  id-token: write
   attestations: write
 
 env:
-  # По умолчанию: на main → block, на остальных → warn (можно переопределить при ручном запуске)
+  # main → block, остальные → warn (можно переопределить при ручном запуске)
   ENFORCEMENT: ${{ (github.event_name == 'workflow_dispatch' && inputs.enforcement) || (github.ref_name == github.event.repository.default_branch && 'block' || 'warn') }}
 
-# Один конвейер на ветку (push и PR одной ветки не параллелятся)
+# Один конвейер на ветку (push и PR этой же ветки не параллелятся)
 concurrency:
   group: sec-${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
-  # =========================== Code Scanning (CodeQL) ===========================
+  # -------------------- Code Scanning (CodeQL) --------------------
   codeql:
     name: CodeQL
     runs-on: ubuntu-latest
@@ -44,18 +44,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
-      # Python/Actions: без autobuild → build-mode: none
       - name: Initialize CodeQL
         uses: github/codeql-action/init@192325c86100d080feab897ff886c34abd4c83a3
         with:
           languages: python, actions
           build-mode: none
-          # queries: security-extended,security-and-quality
 
       - name: Analyze
         uses: github/codeql-action/analyze@192325c86100d080feab897ff886c34abd4c83a3
 
-  # ============ Build + SBOM + (Attest/Verify только на push) ============
+  # -------- Build + SBOM + (Attest/Verify только на push) --------
   build_and_attest:
     name: Build + SBOM + (Attest/Verify on push)
     runs-on: ubuntu-latest
@@ -112,7 +110,7 @@ jobs:
             checksums.txt
             sbom.spdx.json
 
-      # --- Ниже шаги ТОЛЬКО на push (записи/аттестации и verify) ---
+      # Только на push — запись в attestations
       - name: Attest build provenance (SLSA)
         if: github.event_name == 'push'
         uses: actions/attest-build-provenance@ef244123eb79f2f7a7e75d99086184180e6d0018
@@ -142,7 +140,7 @@ jobs:
             fi
           fi
 
-  # =================== SCA gate (Dependency Review) — PR и push ===================
+  # ---------------- SCA gate (Dependency Review) ----------------
   dependency_review:
     name: SCA gate (Dependency Review)
     runs-on: ubuntu-latest
@@ -152,7 +150,7 @@ jobs:
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
-      # PR: классический сценарий
+      # PR-вариант (классический)
       - name: Dependency review (on PR, fail on CRITICAL)
         if: github.event_name == 'pull_request'
         uses: actions/dependency-review-action@595b5aeba73380359d98a5e087f648dbb0edce1b
@@ -160,7 +158,7 @@ jobs:
           fail-on-severity: critical
         continue-on-error: ${{ env.ENFORCEMENT != 'block' }}
 
-      # PUSH: вычисляем base/head и запускаем сравнение
+      # PUSH-вариант: вычисляем base/head и сравниваем
       - name: Compute base/head for push
         if: github.event_name == 'push'
         id: diffs
@@ -183,7 +181,7 @@ jobs:
           fail-on-severity: critical
         continue-on-error: ${{ env.ENFORCEMENT != 'block' }}
 
-  # ===== Secret scanning / Push protection / DG / ADS (печатаем + валим при block) =====
+  # ------- Secret scanning / Push protection / DG / ADS -------
   security_settings_guard:
     name: Secret scanning / Push protection / DG / ADS
     runs-on: ubuntu-latest
@@ -211,7 +209,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # =================== Promote → production (env approval в UI) ===================
+  # -------- Promote → production (только push в main) --------
   promote_to_prod:
     name: Promote → production (requires env approval)
     needs: [ codeql, build_and_attest, security_settings_guard, dependency_review ]
