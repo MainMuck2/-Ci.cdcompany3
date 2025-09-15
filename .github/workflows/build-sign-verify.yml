@@ -21,7 +21,7 @@ permissions:
   attestations: write
 
 env:
-  # Safe default for non-dispatch events; 'inputs' is empty on push/PR
+  # Безопасный дефолт для событий без inputs (push/PR)
   ENFORCEMENT: ${{ inputs.enforcement || 'warn' }}
 
 concurrency:
@@ -48,15 +48,17 @@ jobs:
       - name: Export SBOM (SPDX) for current commit
         # Требует: Settings → Code security → Dependency graph + Automatic dependency submission = ON
         run: |
-          set -e
-          # тянем SBOM с API и извлекаем чистый документ из поля .sbom
+          set -euo pipefail
+          # Тянем SBOM через API; поле .sbom может прийти строкой — разбираем в объект
           gh api \
             -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
             repos/${{ github.repository }}/dependency-graph/sbom \
-            -f ref=${{ github.sha }} | jq '.sbom' > sbom.spdx.json
+            -f ref=${{ github.sha }} \
+          | jq '.sbom | (if type=="string" then fromjson else . end)' > sbom.spdx.json
 
-          # быстрая проверка: должен напечатать SPDX версию
-          jq -r '.spdxVersion' sbom.spdx.json
+          # sanity-check: должно вывести что-то вроде "SPDX-2.3"
+          jq -e -r '.spdxVersion' sbom.spdx.json
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -81,7 +83,7 @@ jobs:
           sbom-path: sbom.spdx.json
 
       - name: Verify attestations before "promote/deploy"
-        # BLOCK => fail, WARN/PASS => пропускаем с предупреждением
+        # BLOCK => fail, WARN/PASS => предупреждение
         shell: bash
         run: |
           set -e
@@ -98,16 +100,14 @@ jobs:
 
   dependency_review:
     name: SCA gate (Dependency Review)
-    # Keep the job defined, but only run its step on PRs
+    if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
-        if: ${{ github.event_name == 'pull_request' }}
       - name: Dependency review (fail on CRITICAL)
-        if: ${{ github.event_name == 'pull_request' }}
         uses: actions/dependency-review-action@595b5aeba73380359d98a5e087f648dbb0edce1b
         with:
           fail-on-severity: critical
@@ -140,7 +140,6 @@ jobs:
 
   promote_to_prod:
     name: Promote → production (requires env approval)
-    # Do NOT depend on dependency_review, since this job never runs on PRs
     needs: [ build_and_attest, secret_scanning_presence ]
     if: ${{ always() && (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
