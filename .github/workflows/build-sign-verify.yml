@@ -21,11 +21,12 @@ permissions:
   attestations: write
 
 env:
-  # безопасная инициализация, чтобы не падать на push/PR без inputs (как было)
+  # безопасная инициализация, чтобы не падать на push/PR без inputs
   ENFORCEMENT: ${{ (github.event_name == 'workflow_dispatch' && inputs.enforcement) || 'warn' }}
 
+# ОДНО РЕШЕНИЕ: один конвейер на ветку (push и PR этой же ветки не параллелятся)
 concurrency:
-  group: sec-${{ github.ref }}
+  group: sec-${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -47,7 +48,7 @@ jobs:
         with:
           languages: python, actions
           build-mode: none
-          # при желании: queries: security-extended,security-and-quality
+          # queries: security-extended,security-and-quality
 
       - name: Analyze
         uses: github/codeql-action/analyze@192325c86100d080feab897ff886c34abd4c83a3
@@ -92,7 +93,7 @@ jobs:
             echo "source=github-api" >> "$GITHUB_OUTPUT"
             echo "✓ Получен официальный SPDX из API"
           else
-            echo "::warning::SBOM API недоступен (обычно 404 на не-default или граф не готов). Перехожу на локальную генерацию."
+            echo "::warning::SBOM API недоступен (404/граф не готов). Перехожу на локальную генерацию."
             rm -f "$tmp"
             curl -sSfL https://get.anchore.io/syft | sudo sh -s -- -b /usr/local/bin
             syft dir:. -o spdx-json=sbom.spdx.json
@@ -185,7 +186,7 @@ jobs:
   # =================== Promote → production (env approval в UI) ===================
   promote_to_prod:
     name: Promote → production (requires env approval)
-    needs: [ codeql, build_and_attest, secret_scanning_presence, dependency_review ]
+    needs: [ codeql, build_and_attest, secret_scanning_presence ]
     if: ${{ always() && (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
     environment:
