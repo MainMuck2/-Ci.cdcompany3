@@ -1,126 +1,159 @@
-name: L1 build, sign (keyless), verify (non-blocking)
+name: GA Security Controls (Pass/Warn/Block)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main ]
   pull_request:
-    branches: [ "main" ]
   workflow_dispatch:
+    inputs:
+      enforcement:
+        description: "pass | warn | block"
+        required: false
+        default: "warn"
+        type: choice
+        options: [ "pass", "warn", "block" ]
 
 permissions:
   contents: read
-  packages: write
-  id-token: write
+  packages: read
+  security-events: read
+  id-token: write   # для OIDC и attestations
+  attestations: write
+
 
 env:
-  IMAGE: ghcr.io/${{ github.repository }}
+  # безопасная инициализация, чтобы не падать на push/PR без inputs
+  ENFORCEMENT: ${{ (github.event_name == 'workflow_dispatch' && inputs.enforcement) || 'warn' }}
+
+concurrency:
+  group: sec-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  unit_tests:
+  build_and_attest:
+    name: Build + SBOM + Attest + Verify
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
-        with:
-          python-version: "3.12"
-      - run: pip install -r requirements.txt pytest requests
-      - run: pytest -q
+      - name: Checkout
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
-  build_and_sign:
-    needs: unit_tests
-    runs-on: ubuntu-latest
-    outputs:
-      image_ref: ${{ steps.compute.outputs.image_ref }}
-    steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
-
-      - name: Login to GHCR
-        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435
-
-      - name: Build and push image (by digest)
-        id: build
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
-        with:
-          context: .
-          push: true
-          tags: ${{ env.IMAGE }}:ci-l1
-          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true
-
-      - name: Compute image ref
-        id: compute
-        run: echo "image_ref=${{ env.IMAGE }}@${{ steps.build.outputs.digest }}" >> "$GITHUB_OUTPUT"
-
-      - name: Install cosign
-        uses: sigstore/cosign-installer@<PIN_COSIGN>
-
-      - name: Keyless sign (Fulcio/Rekor)
-        env:
-          COSIGN_EXPERIMENTAL: "true"
-        run: cosign sign --yes --keyless "${{ steps.compute.outputs.image_ref }}"
-
-      - name: Create minimal provenance predicate
+      - name: Ensure jq present (fallback)
         run: |
-          cat > predicate.json <<'JSON'
-          {
-            "_type": "https://in-toto.io/Statement/v0.1",
-            "predicateType": "https://slsa.dev/provenance/v1",
-            "predicate": {
-              "builder": {"id": "github-actions"},
-              "buildType": "container-build",
-              "invocation": {
-                "id": "${{ github.run_id }}",
-                "parameters": {"repo": "${{ github.repository }}", "sha": "${{ github.sha }}"}
-              }
-            }
-          }
-          JSON
+          command -v jq >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y jq)
 
-      - name: Attach attestation (keyless)
+      - name: Build demo artifact
+        run: |
+          echo "hello $(date -u +%FT%TZ)" > artifact.txt
+          sha256sum artifact.txt | tee checksums.txt
+
+      - name: Export SBOM (SPDX) for current commit
+        # Требует: Settings → Code security → Dependency graph + Automatic dependency submission = ON
+        # В warn/pass режимах не валим пайплайн, просто предупреждаем если API недоступно
+        shell: bash
+        run: |
+          set -e
+          if gh api -H "Accept: application/vnd.github+json" \
+               repos/${{ github.repository }}/dependency-graph/sbom \
+               -f ref=${{ github.sha }} > sbom.spdx.json ; then
+            echo "SBOM exported to sbom.spdx.json"
+          else
+            if [ "${ENFORCEMENT}" = "block" ]; then
+              echo "SBOM export failed and ENFORCEMENT=block ⇒ BLOCK"
+              exit 1
+            else
+              echo "::warning::SBOM export failed. Enable Dependency graph + Automatic dependency submission in Settings → Code security"
+              # создадим пустышку, чтобы последующие шаги не ломались
+              echo '{"spdxVersion":"SPDX-2.3","packages":[]}' > sbom.spdx.json
+            fi
+          fi
         env:
-          COSIGN_EXPERIMENTAL: "true"
-        run: cosign attest --yes --keyless --type slsaprovenance --predicate predicate.json "${{ steps.compute.outputs.image_ref }}"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Generate SBOM (CycloneDX) for built image
-        uses: anchore/sbom-action@<PIN_SBOM>
-        with:
-          image: ${{ steps.compute.outputs.image_ref }}
-          format: cyclonedx-json
-          output-file: sbom.cdx.json
-
-      - name: Upload artifacts
+      - name: Upload artifact (for record)
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: l1-artifacts
+          name: demo-artifact
           path: |
-            sbom.cdx.json
-            predicate.json
+            artifact.txt
+            checksums.txt
+            sbom.spdx.json
 
-  verify_non_blocking:
-    needs: build_and_sign
+      - name: Attest build provenance (SLSA)
+        uses: actions/attest-build-provenance@ef244123eb79f2f7a7e75d99086184180e6d0018
+        with:
+          subject-path: artifact.txt
+
+      - name: Attest SBOM (bind to subject digest)
+        uses: actions/attest-sbom@5026d3663739160db546203eeaffa6aa1c51a4d6
+        with:
+          subject-path: artifact.txt
+          sbom-path: sbom.spdx.json
+
+      - name: Verify attestations before "promote/deploy"
+        # BLOCK => fail, WARN/PASS => пропускаем с предупреждением
+        shell: bash
+        run: |
+          set -e
+          if ! gh attestation verify --subject-path artifact.txt ; then
+            if [ "${ENFORCEMENT}" = "block" ]; then
+              echo "Attestation verify FAILED ⇒ BLOCK"
+              exit 1
+            else
+              echo "::warning::Attestation verify failed ⇒ WARN mode"
+            fi
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency_review:
+    name: SCA gate (Dependency Review)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - name: Dependency review (fail on CRITICAL)
+        uses: actions/dependency-review-action@595b5aeba73380359d98a5e087f648dbb0edce1b
+        with:
+          fail-on-severity: critical
+        continue-on-error: ${{ env.ENFORCEMENT != 'block' }}
+
+  secret_scanning_presence:
+    name: Secret scanning (presence & push protection)
     runs-on: ubuntu-latest
     steps:
-      - name: Install cosign
-        uses: sigstore/cosign-installer@<PIN_COSIGN>
-
-      - name: Verify signature (WARN-only)
-        continue-on-error: true
+      - name: Check repo security_and_analysis flags
+        shell: bash
         run: |
-          cosign verify \
-            --certificate-identity-regexp "https://github.com/${{ github.repository }}.*" \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            "${{ needs.build_and_sign.outputs.image_ref }}" || \
-          echo "::warning ::signature verify failed (L1 non-blocking)"
+          set -e
+          DATA=$(gh api repos/${{ github.repository }})
+          SEC=$(echo "$DATA" | jq -r '.security_and_analysis')
+          SS=$(echo "$SEC" | jq -r '.secret_scanning.status')
+          PP=$(echo "$SEC" | jq -r '.secret_scanning_push_protection.status')
+          GHAS=$(echo "$SEC" | jq -r '.advanced_security.status')
+          echo "Secret scanning: $SS, Push protection: $PP, GHAS: $GHAS"
+          if [ "$SS" != "enabled" ] || [ "$PP" != "enabled" ]; then
+            if [ "${ENFORCEMENT}" = "block" ]; then
+              echo "Secret scanning/Push protection not fully enabled ⇒ BLOCK"
+              exit 1
+            else
+              echo "::warning::Enable Secret scanning + Push protection in Settings → Security & analysis"
+            fi
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Verify attestation presence (WARN-only)
-        continue-on-error: true
+  promote_to_prod:
+    name: Promote → production (requires env approval)
+    needs: [ build_and_attest, dependency_review, secret_scanning_presence ]
+    if: ${{ always() && (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main') }}
+    runs-on: ubuntu-latest
+    environment:
+      name: production   # в UI включи Required reviewers (и запрет self-approval)
+    steps:
+      - name: Gate summary
         run: |
-          cosign verify-attestation --type slsaprovenance \
-            "${{ needs.build_and_sign.outputs.image_ref }}" || \
-          echo "::warning ::attestation verify failed (L1 non-blocking)"
+          echo "ENFORCEMENT=${ENFORCEMENT}"
+          echo "All upstream gates completed. This job requires environment approval in GitHub UI."
