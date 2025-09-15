@@ -26,7 +26,7 @@ env:
   # По умолчанию: на main → block, на остальных → warn (можно переопределить при ручном запуске)
   ENFORCEMENT: ${{ (github.event_name == 'workflow_dispatch' && inputs.enforcement) || (github.ref_name == github.event.repository.default_branch && 'block' || 'warn') }}
 
-# Один конвейер на ветку (PR и push одной ветки не параллелятся)
+# Один конвейер на ветку (push и PR одной ветки не параллелятся)
 concurrency:
   group: sec-${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
@@ -142,23 +142,48 @@ jobs:
             fi
           fi
 
-  # =================== SCA gate (Dependency Review) — только PR ===================
+  # =================== SCA gate (Dependency Review) — PR и push ===================
   dependency_review:
     name: SCA gate (Dependency Review)
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
-      - name: Dependency review (fail on CRITICAL)
+
+      # PR: классический сценарий
+      - name: Dependency review (on PR, fail on CRITICAL)
+        if: github.event_name == 'pull_request'
         uses: actions/dependency-review-action@595b5aeba73380359d98a5e087f648dbb0edce1b
         with:
           fail-on-severity: critical
         continue-on-error: ${{ env.ENFORCEMENT != 'block' }}
 
-  # ===== Secret scanning / Push protection (печатаем и, при block, валим если off) =====
+      # PUSH: вычисляем base/head и запускаем сравнение
+      - name: Compute base/head for push
+        if: github.event_name == 'push'
+        id: diffs
+        shell: bash
+        run: |
+          BEFORE="${{ github.event.before }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "base=${{ github.event.repository.default_branch }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "base=$BEFORE" >> "$GITHUB_OUTPUT"
+          fi
+          echo "head=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Dependency review (on push, fail on CRITICAL)
+        if: github.event_name == 'push'
+        uses: actions/dependency-review-action@595b5aeba73380359d98a5e087f648dbb0edce1b
+        with:
+          base-ref: ${{ steps.diffs.outputs.base }}
+          head-ref: ${{ steps.diffs.outputs.head }}
+          fail-on-severity: critical
+        continue-on-error: ${{ env.ENFORCEMENT != 'block' }}
+
+  # ===== Secret scanning / Push protection / DG / ADS (печатаем + валим при block) =====
   security_settings_guard:
     name: Secret scanning / Push protection / DG / ADS
     runs-on: ubuntu-latest
@@ -189,7 +214,7 @@ jobs:
   # =================== Promote → production (env approval в UI) ===================
   promote_to_prod:
     name: Promote → production (requires env approval)
-    needs: [ codeql, build_and_attest, security_settings_guard ]
+    needs: [ codeql, build_and_attest, security_settings_guard, dependency_review ]
     if: ${{ always() && github.event_name == 'push' && startsWith(github.ref, 'refs/heads/main') }}
     runs-on: ubuntu-latest
     environment:
