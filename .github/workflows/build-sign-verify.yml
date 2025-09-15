@@ -169,7 +169,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       
-      # [К1][М1][Л1] verify(SIG) — WARN-only: проверяем подпись по локальному trust-store.
+      # [К1][М1][Л1] verify(SIG) — WARN-only: проверяем подпись по локальному trust-store1.
       - name: Verify signature (WARN-only, pinned identity) [К1][М1][Л1]
         continue-on-error: true
         run: |
