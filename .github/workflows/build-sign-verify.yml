@@ -1,11 +1,9 @@
-# .github/workflows/ga-security-controls.yml
 name: GA Security Controls (Pass/Warn/Block)
 
 on:
   push:
     branches: [ "main" ]
   pull_request:
-    branches: [ "main" ]
   workflow_dispatch:
     inputs:
       enforcement:
@@ -15,16 +13,15 @@ on:
         type: choice
         options: [ "pass", "warn", "block" ]
 
-# Минимум необходимых прав глобально; job'ы могут запрашивать больше (CodeQL).
 permissions:
   contents: read
   packages: read
   security-events: read
-  id-token: write         # для OIDC и attestations
+  id-token: write     # для OIDC и attestations
   attestations: write
 
 env:
-  # Безопасная инициализация => на push/PR inputs отсутствуют
+  # безопасная инициализация, чтобы не падать на push/PR без inputs (как было)
   ENFORCEMENT: ${{ (github.event_name == 'workflow_dispatch' && inputs.enforcement) || 'warn' }}
 
 concurrency:
@@ -32,11 +29,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # --------------------------- Code Scanning (строго для main) ---------------------------
+  # =========================== Code Scanning (CodeQL) ===========================
   codeql:
     name: CodeQL
     runs-on: ubuntu-latest
-    # CodeQL требует security-events: write
     permissions:
       contents: read
       security-events: write
@@ -45,19 +41,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
-      - name: Initialize CodeQL (autobuild)
+      # Python/Actions: без autobuild → build-mode: none
+      - name: Initialize CodeQL
         uses: github/codeql-action/init@192325c86100d080feab897ff886c34abd4c83a3
         with:
-          # Авто-детект языков, автосборка для компилируемых
-          build-mode: autobuild
+          languages: python, actions
+          build-mode: none
+          # при желании: queries: security-extended,security-and-quality
 
-      # analyze сам создаёт чек-раны "CodeQL / Analyze (LANG)"
       - name: Analyze
         uses: github/codeql-action/analyze@192325c86100d080feab897ff886c34abd4c83a3
-        with:
-          category: "/language:autodetected"
 
-  # --------------------------- Build + SBOM + Attest + Verify ---------------------------
+  # =================== Build + SBOM + Attest + Verify (артефакт) ===================
   build_and_attest:
     name: Build + SBOM + Attest + Verify
     runs-on: ubuntu-latest
@@ -66,7 +61,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
-      - name: Ensure jq present
+      - name: Ensure jq present (fallback)
         run: |
           command -v jq >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y jq)
 
@@ -76,7 +71,7 @@ jobs:
           echo "hello $(date -u +%FT%TZ)" > artifact.txt
           sha256sum artifact.txt | tee checksums.txt
 
-      - name: Export SBOM (SPDX) via API, else fallback to Syft
+      - name: Export SBOM (SPDX) for current commit (API → fallback Syft)
         id: sbom
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -84,33 +79,33 @@ jobs:
         run: |
           set -euo pipefail
           tmp=$(mktemp)
-          echo "→ Пытаюсь получить SBOM из GitHub API для commit $GITHUB_SHA"
+          echo "→ Пытаюсь получить SBOM из GitHub Dependency Graph API для ${GITHUB_SHA}"
           if gh api \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              repos/${{ github.repository }}/dependency-graph/sbom \
-              -f ref=${{ github.sha }} \
+               -H "Accept: application/vnd.github+json" \
+               -H "X-GitHub-Api-Version: 2022-11-28" \
+               repos/${{ github.repository }}/dependency-graph/sbom \
+               -f ref=${{ github.sha }} \
             | jq '.sbom | (if type=="string" then fromjson else . end)' > "$tmp" \
             && jq -e -r '.spdxVersion' "$tmp" >/dev/null
           then
             mv "$tmp" sbom.spdx.json
             echo "source=github-api" >> "$GITHUB_OUTPUT"
-            echo "OK: получили официальный SPDX из Dependency Graph API"
+            echo "✓ Получен официальный SPDX из API"
           else
-            echo "WARN: SBOM API недоступен ⇒ генерирую локально Syft (SPDX JSON)"
+            echo "::warning::SBOM API недоступен (обычно 404 на не-default или граф не готов). Перехожу на локальную генерацию."
             rm -f "$tmp"
             curl -sSfL https://get.anchore.io/syft | sudo sh -s -- -b /usr/local/bin
             syft dir:. -o spdx-json=sbom.spdx.json
             jq -e -r '.spdxVersion' sbom.spdx.json >/dev/null
             echo "source=syft" >> "$GITHUB_OUTPUT"
+            echo "✓ Сгенерирован локальный SPDX (Syft)"
           fi
-          # Быстрый sanity-print
           jq -r '.spdxVersion' sbom.spdx.json
 
-      - name: Upload artifact bundle (for record)
+      - name: Upload artifact (for record)
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: build-bundle
+          name: demo-artifact
           path: |
             artifact.txt
             checksums.txt
@@ -119,17 +114,16 @@ jobs:
       - name: Attest build provenance (SLSA)
         uses: actions/attest-build-provenance@ef244123eb79f2f7a7e75d99086184180e6d0018
         with:
-          subject-path: artifact.txt    # подпись по дайджесту этого файла
+          subject-path: artifact.txt
 
-      - name: Attest SBOM (bind to artifact digest)
+      - name: Attest SBOM (bind to subject digest)
         uses: actions/attest-sbom@5026d3663739160db546203eeaffa6aa1c51a4d6
         with:
           subject-path: artifact.txt
           sbom-path: sbom.spdx.json
 
       - name: Verify attestations before "promote/deploy"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # BLOCK => fail, WARN/PASS => предупреждение
         shell: bash
         run: |
           set -euo pipefail
@@ -141,8 +135,10 @@ jobs:
               echo "::warning::Attestation verify failed ⇒ WARN mode"
             fi
           fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # --------------------------- SCA-гейт (только для PR) ---------------------------
+  # =================== SCA gate (Dependency Review) — только PR ===================
   dependency_review:
     name: SCA gate (Dependency Review)
     if: github.event_name == 'pull_request'
@@ -151,22 +147,19 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
       - name: Dependency review (fail on CRITICAL)
         uses: actions/dependency-review-action@595b5aeba73380359d98a5e087f648dbb0edce1b
         with:
           fail-on-severity: critical
         continue-on-error: ${{ env.ENFORCEMENT != 'block' }}
 
-  # --------------------------- Проверка настроек Secret scanning ---------------------------
+  # ===== Secret scanning / Push protection (печатаем и, при block, валим если off) =====
   secret_scanning_presence:
     name: Secret scanning (presence & push protection)
     runs-on: ubuntu-latest
     steps:
       - name: Check repo security_and_analysis flags
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -174,11 +167,11 @@ jobs:
           SEC=$(echo "$DATA" | jq -r '.security_and_analysis')
           SS=$(echo "$SEC" | jq -r '.secret_scanning.status // "unknown"')
           PP=$(echo "$SEC" | jq -r '.secret_scanning_push_protection.status // "unknown"')
-          GHAS=$(echo "$SEC" | jq -r '.advanced_security.status // "absent"')
           DG=$(echo "$SEC" | jq -r '.dependency_graph.status // "unknown"')
           ADS=$(echo "$SEC" | jq -r '.automatic_dependency_submission.status // "unknown"')
-          echo "Secret scanning: $SS, Push protection: $PP, GHAS: $GHAS, Dependency graph: $DG, Automatic submission: $ADS"
-          if [ "$SS$PP" != "enabledenabled" ]; then
+          GHAS=$(echo "$SEC" | jq -r '.advanced_security.status // "absent"')
+          echo "Secret scanning: $SS, Push protection: $PP, Dependency graph: $DG, Automatic submission: $ADS, GHAS: $GHAS"
+          if [ "$SS" != "enabled" ] || [ "$PP" != "enabled" ]; then
             if [ "${ENFORCEMENT}" = "block" ]; then
               echo "Secret scanning/Push protection not fully enabled ⇒ BLOCK"
               exit 1
@@ -186,17 +179,19 @@ jobs:
               echo "::warning::Enable Secret scanning + Push protection in Settings → Code security and analysis"
             fi
           fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # --------------------------- Promote → production (c approval окружения) ---------------------------
+  # =================== Promote → production (env approval в UI) ===================
   promote_to_prod:
     name: Promote → production (requires env approval)
     needs: [ codeql, build_and_attest, secret_scanning_presence, dependency_review ]
     if: ${{ always() && (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
     environment:
-      name: production   # в UI: Required reviewers, запрет self-approval
+      name: production   # в UI включи Required reviewers (и запрет self-approval)
     steps:
       - name: Gate summary
         run: |
           echo "ENFORCEMENT=${ENFORCEMENT}"
-          echo "Все апстрим-гейты пройдены. Дальше — ручной аппрув окружения в GitHub UI."
+          echo "All upstream gates completed. This job requires environment approval in GitHub UI."
