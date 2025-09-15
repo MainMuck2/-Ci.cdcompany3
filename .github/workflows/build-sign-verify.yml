@@ -18,6 +18,7 @@ permissions:
   packages: read
   security-events: read
   id-token: write   # для OIDC и attestations
+  attestations: write
 
 env:
   # безопасная инициализация, чтобы не падать на push/PR без inputs
