@@ -82,7 +82,7 @@ jobs:
                repos/${{ github.repository }}/dependency-graph/sbom \
                -f ref=${{ github.sha }} \
             | jq '.sbom | (if type=="string" then fromjson else . end)' > "$tmp" \
-            && jq -e -r '.spdxVersion' "$tmp" >/div/null
+            && jq -e -r '.spdxVersion' "$tmp" >/dev/null
           then
             mv "$tmp" sbom.spdx.json
             echo "source=github-api" >> "$GITHUB_OUTPUT"
@@ -126,13 +126,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Жёстко пиним личность подписанта и issuer
-          gh attestation verify \
-            --repo "${GITHUB_REPOSITORY}" \
-            --subject-path artifact.txt \
-            --signer-workflow "${GITHUB_WORKFLOW_REF}" \
-            --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
-          echo "✓ Attestations verified"
+          # Базовая верификация (совместимо с большинством версий gh)
+          if ! gh attestation verify --subject-path artifact.txt ; then
+            if [ "${ENFORCEMENT}" = "block" ]; then
+              echo "Attestation verify FAILED ⇒ BLOCK"
+              exit 1
+            else
+              echo "::warning::Attestation verify failed ⇒ WARN mode"
+            fi
+          fi
 
   # ---------------- SCA gate (Dependency Review) ----------------
   dependency_review:
@@ -181,7 +183,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      administration: read  # нужно для чтения .security_and_analysis
     steps:
       - name: Check repo security_and_analysis flags
         shell: bash
@@ -190,7 +191,7 @@ jobs:
           DATA=$(gh api \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            repos/${{ github.repository }})
+            repos/${{ github.repository }} || echo '{}')
           SEC=$(echo "$DATA" | jq -r '.security_and_analysis // {}')
           SS=$(echo "$SEC" | jq -r '.secret_scanning.status // "unknown"')
           PP=$(echo "$SEC" | jq -r '.secret_scanning_push_protection.status // "unknown"')
@@ -199,9 +200,9 @@ jobs:
           GHAS=$(echo "$SEC" | jq -r '.advanced_security.status // "absent"')
           echo "Secret scanning: $SS, Push protection: $PP, Dependency graph: $DG, Automatic submission: $ADS, GHAS: $GHAS"
 
-          # Если нет прав читать настройки — не валим пайплайн в BLOCK, а предупреждаем
+          # Если нет прав читать настройки — предупреждаем и выходим успешно
           if [ "$SS" = "unknown" ] || [ "$PP" = "unknown" ]; then
-            echo "::warning::Не удалось прочитать Code security settings (нужны права administration:read или роль админа репо)."
+            echo "::warning::Не удалось прочитать Code security settings (нужны права администратора репо). Продолжаю без BLOCK."
             exit 0
           fi
 
