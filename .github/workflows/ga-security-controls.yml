@@ -119,21 +119,27 @@ jobs:
           subject-path: artifact.txt
           sbom-path: sbom.spdx.json
 
-      - name: Verify attestations (pre-promote)
+      - name: Verify attestations (pre-promote, with retries)
         if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          # Базовая верификация (совместимо с большинством версий gh)
-          if ! gh attestation verify --subject-path artifact.txt ; then
-            if [ "${ENFORCEMENT}" = "block" ]; then
-              echo "Attestation verify FAILED ⇒ BLOCK"
-              exit 1
-            else
-              echo "::warning::Attestation verify failed ⇒ WARN mode"
+          tries=12  # ~2 минуты ожидания индексации (12*10с)
+          for i in $(seq 1 $tries); do
+            if gh attestation verify --repo "${GITHUB_REPOSITORY}" --subject-path artifact.txt; then
+              echo "✓ Attestations verified"
+              exit 0
             fi
+            echo "verify attempt $i/$tries failed; retrying in 10s..."
+            sleep 10
+          done
+          echo "Attestation verify FAILED after retries"
+          if [ "${ENFORCEMENT}" = "block" ]; then
+            exit 1
+          else
+            echo "::warning::Attestation verify failed ⇒ WARN mode"
           fi
 
   # ---------------- SCA gate (Dependency Review) ----------------
