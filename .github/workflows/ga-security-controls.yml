@@ -128,10 +128,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # убираем "@ref" из workflow_ref для флага --signer-workflow
-          WF_NOREF="${WFREF%@*}"
+          WF_NOREF="${WFREF%@*}" # убираем "@ref" из workflow_ref для --signer-workflow
           tries=12  # ~2 мин (12×10с)
           for i in $(seq 1 $tries); do
+            echo "→ Verify attempt $i/$tries…"
             if gh attestation verify \
                   --repo "$REPO" \
                   --subject-path artifact.txt \
@@ -142,10 +142,9 @@ jobs:
               echo "✓ Attestations verified"
               exit 0
             fi
-            echo "verify attempt $i/$tries failed; retrying in 10s..."
             sleep 10
           done
-          echo "Attestation verify FAILED after retries"
+          echo "✗ Attestation verify FAILED after retries"
           if [ "${ENFORCEMENT}" = "block" ]; then
             exit 1
           else
