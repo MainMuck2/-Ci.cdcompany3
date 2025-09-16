@@ -138,6 +138,7 @@ jobs:
                   --predicate-type "https://slsa.dev/provenance/v1" \
                   --signer-workflow "$WF_NOREF" \
                   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+                  --deny-self-hosted-runners \
                   --limit 100 ; then
               echo "✓ Attestations verified"
               exit 0
@@ -199,6 +200,10 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Ensure jq present
+        run: |
+          command -v jq >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y jq)
+
       - name: Check repo security_and_analysis flags
         shell: bash
         run: |
