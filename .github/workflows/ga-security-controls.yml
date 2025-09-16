@@ -23,7 +23,7 @@ permissions:
   attestations: write
 
 env:
-  # main → block, остальные → warn (можно переопределить при ручном запуске)
+  # main → block, остальные → warn (переопределяется вручную через dispatch)
   ENFORCEMENT: ${{ (github.event_name == 'workflow_dispatch' && inputs.enforcement) || (github.ref_name == github.event.repository.default_branch && 'block' || 'warn') }}
 
 jobs:
@@ -119,16 +119,26 @@ jobs:
           subject-path: artifact.txt
           sbom-path: sbom.spdx.json
 
-      - name: Verify attestations (pre-promote, with retries)
+      - name: Verify attestations (pre-promote, signer pinned, with retries)
         if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WFREF: ${{ github.workflow_ref }}   # owner/repo/.github/workflows/file.yml@ref
+          REPO: ${{ github.repository }}
         shell: bash
         run: |
           set -euo pipefail
-          tries=12  # ~2 минуты ожидания индексации (12*10с)
+          # убираем "@ref" из workflow_ref для флага --signer-workflow
+          WF_NOREF="${WFREF%@*}"
+          tries=12  # ~2 мин (12×10с)
           for i in $(seq 1 $tries); do
-            if gh attestation verify --repo "${GITHUB_REPOSITORY}" --subject-path artifact.txt; then
+            if gh attestation verify \
+                  --repo "$REPO" \
+                  --subject-path artifact.txt \
+                  --predicate-type "https://slsa.dev/provenance/v1" \
+                  --signer-workflow "$WF_NOREF" \
+                  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+                  --limit 100 ; then
               echo "✓ Attestations verified"
               exit 0
             fi
@@ -206,7 +216,7 @@ jobs:
           GHAS=$(echo "$SEC" | jq -r '.advanced_security.status // "absent"')
           echo "Secret scanning: $SS, Push protection: $PP, Dependency graph: $DG, Automatic submission: $ADS, GHAS: $GHAS"
 
-          # Если нет прав читать настройки — предупреждаем и выходим успешно
+          # Нет прав читать настройки? — предупреждение, но не фейлим
           if [ "$SS" = "unknown" ] || [ "$PP" = "unknown" ]; then
             echo "::warning::Не удалось прочитать Code security settings (нужны права администратора репо). Продолжаю без BLOCK."
             exit 0
@@ -230,7 +240,7 @@ jobs:
     if: ${{ always() && github.event_name == 'push' && startsWith(github.ref, 'refs/heads/main') }}
     runs-on: ubuntu-latest
     environment:
-      name: production   # в UI включи Required reviewers (и запрет self-approval)
+      name: production   # включи Required reviewers; self-approval запрети
     # локальный замок ТОЛЬКО на деплой (чтобы проверки не ждали аппрува)
     concurrency:
       group: deploy-${{ github.ref_name }}
