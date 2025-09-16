@@ -1,4 +1,4 @@
-name: GA Security Controls (Pass/Warn/Block)
+name: Security Framework Gates
 
 on:
   push:
@@ -7,270 +7,134 @@ on:
     branches: [ "main", "release/*" ]
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
-    inputs:
-      enforcement:
-        description: "pass | warn | block"
-        required: false
-        default: "warn"
-        type: choice
-        options: [ "pass", "warn", "block" ]
 
 permissions:
   contents: read
+  security-events: write
   packages: read
-  security-events: read
   id-token: write
   attestations: write
 
 env:
-  # main → block, остальные → warn (можно вручную через dispatch)
-  ENFORCEMENT: ${{ (github.event_name == 'workflow_dispatch' && inputs.enforcement) || (github.ref_name == github.event.repository.default_branch && 'block' || 'warn') }}
+  ENFORCEMENT: ${{ github.ref_name == github.event.repository.default_branch && 'block' || 'warn' }}
 
 jobs:
-  # -------------------- Code Scanning (CodeQL) --------------------
+  # --- Static & Dependency Analysis ---
   codeql:
-    name: CodeQL
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
-      actions: read
     steps:
-      - name: Checkout
-        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@192325c86100d080feab897ff886c34abd4c83a3
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
         with:
           languages: python, actions
           build-mode: none
+      - uses: github/codeql-action/analyze@v3
 
-      - name: Analyze
-        uses: github/codeql-action/analyze@192325c86100d080feab897ff886c34abd4c83a3
-
-  # -------- Build + SBOM + (Attest/Verify только на push) --------
-  build_and_attest:
-    name: Build + SBOM + (Attest/Verify on push)
+  dependency_review:
     runs-on: ubuntu-latest
-    needs: [ codeql ]
     steps:
-      - name: Checkout
-        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: critical
+        continue-on-error: ${{ env.ENFORCEMENT != 'block' }}
 
-      - name: Ensure jq present
-        run: |
-          command -v jq >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y jq)
+  # --- Build + SBOM + Attestation ---
+  build_and_attest:
+    needs: [ codeql, dependency_review ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Build demo artifact
+      - name: Build artifact
         run: |
-          set -euo pipefail
           echo "hello $(date -u +%FT%TZ)" > artifact.txt
           sha256sum artifact.txt | tee checksums.txt
 
-      - name: Export SBOM (SPDX) via API, else fallback to Syft
+      - name: Export SBOM (GitHub API or Syft)
         id: sbom
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
         run: |
           set -euo pipefail
-          tmp=$(mktemp)
-          echo "→ Получаю SBOM из Dependency Graph API для ${GITHUB_SHA}"
-          if gh api \
-               -H "Accept: application/vnd.github+json" \
-               -H "X-GitHub-Api-Version: 2022-11-28" \
-               repos/${{ github.repository }}/dependency-graph/sbom \
-               -f ref=${{ github.sha }} \
-            | jq '.sbom | (if type=="string" then fromjson else . end)' > "$tmp" \
-            && jq -e -r '.spdxVersion' "$tmp" >/dev/null
-          then
-            mv "$tmp" sbom.spdx.json
-            echo "source=github-api" >> "$GITHUB_OUTPUT"
-          else
-            echo "::warning::SBOM API недоступен (404/задержка индексации). Генерирую локально Syft."
-            rm -f "$tmp"
-            curl -sSfL https://get.anchore.io/syft | sudo sh -s -- -b /usr/local/bin
-            syft dir:. -o spdx-json=sbom.spdx.json
-            jq -e -r '.spdxVersion' sbom.spdx.json >/dev/null
-            echo "source=syft" >> "$GITHUB_OUTPUT"
-          fi
-          jq -r '.spdxVersion' sbom.spdx.json
+          gh api repos/${{ github.repository }}/dependency-graph/sbom -f ref=${{ github.sha }} \
+            | jq '.sbom | fromjson' > sbom.spdx.json || \
+          (curl -sSfL https://get.anchore.io/syft | sh -s -- -b /usr/local/bin && \
+           syft dir:. -o spdx-json=sbom.spdx.json)
 
-      - name: Upload artifact (for record)
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
         with:
-          name: demo-artifact
+          name: build
           path: |
             artifact.txt
             checksums.txt
             sbom.spdx.json
 
-      # Только на push — запись в attestations
-      - name: Attest build provenance (SLSA)
+      - name: Attest provenance
         if: github.event_name == 'push'
-        uses: actions/attest-build-provenance@ef244123eb79f2f7a7e75d99086184180e6d0018
+        uses: actions/attest-build-provenance@v1
         with:
           subject-path: artifact.txt
 
-      - name: Attest SBOM (bind to subject digest)
+      - name: Attest SBOM
         if: github.event_name == 'push'
-        uses: actions/attest-sbom@5026d3663739160db546203eeaffa6aa1c51a4d6
+        uses: actions/attest-sbom@v1
         with:
           subject-path: artifact.txt
           sbom-path: sbom.spdx.json
 
-      - name: Ensure 'gh attestation' is available
+      - name: Verify attestations
         if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if gh help attestation >/dev/null 2>&1; then
-            echo "✓ gh attestation доступна"
-          else
-            echo "→ Устанавливаю расширение gh-attestation (fallback)…"
-            gh extension install github/gh-attestation || true
-          fi
-          if gh attestation --help >/dev/null 2>&1; then
-            echo "✓ Подкоманда готова"
-          else
-            echo "→ Обновляю gh CLI из apt…"
-            sudo apt-get update && sudo apt-get install -y gh
-          fi
-          gh attestation --help >/dev/null 2>&1 || { echo "::error::'gh attestation' недоступна"; exit 1; }
-
-      - name: Verify attestations (pre-promote, signer pinned, with retries)
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WFREF: ${{ github.workflow_ref }}   # owner/repo/.github/workflows/file.yml@ref
-          REPO: ${{ github.repository }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          WF_NOREF="${WFREF%@*}" # убираем "@ref" из workflow_ref для --signer-workflow
-          tries=12               # ~2 мин (12×10с)
-          for i in $(seq 1 $tries); do
-            echo "→ Verify attempt $i/$tries…"
+          WF_NOREF="${GITHUB_WORKFLOW_REF%@*}"
+          for i in $(seq 1 6); do
             if gh attestation verify \
-                  --repo "$REPO" \
+                  --repo "${{ github.repository }}" \
                   --subject-path artifact.txt \
                   --predicate-type "https://slsa.dev/provenance/v1" \
                   --signer-workflow "$WF_NOREF" \
                   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
                   --deny-self-hosted-runners \
-                  --limit 100 ; then
-              echo "✓ Attestations verified"
+                  --limit 50 ; then
+              echo "✓ Attestation verified"
               exit 0
             fi
             sleep 10
           done
-          echo "✗ Attestation verify FAILED after retries"
           if [ "${ENFORCEMENT}" = "block" ]; then
             exit 1
           else
-            echo "::warning::Attestation verify failed ⇒ WARN mode"
+            echo "::warning::Attestation verification failed"
           fi
 
-  # ---------------- SCA gate (Dependency Review) ----------------
-  dependency_review:
-    name: SCA gate (Dependency Review)
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
-
-      # PR-вариант (классический)
-      - name: Dependency review (on PR, fail on CRITICAL)
-        if: github.event_name == 'pull_request'
-        uses: actions/dependency-review-action@595b5aeba73380359d98a5e087f648dbb0edce1b
-        with:
-          fail-on-severity: critical
-        continue-on-error: ${{ env.ENFORCEMENT != 'block' }}
-
-      # PUSH-вариант: вычисляем base/head и сравниваем
-      - name: Compute base/head for push
-        if: github.event_name == 'push'
-        id: diffs
-        shell: bash
-        run: |
-          BEFORE="${{ github.event.before }}"
-          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-            echo "base=${{ github.event.repository.default_branch }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "base=$BEFORE" >> "$GITHUB_OUTPUT"
-          fi
-          echo "head=${{ github.sha }}" >> "$GITHUB_OUTPUT"
-
-      - name: Dependency review (on push, fail on CRITICAL)
-        if: github.event_name == 'push'
-        uses: actions/dependency-review-action@595b5aeba73380359d98a5e087f648dbb0edce1b
-        with:
-          base-ref: ${{ steps.diffs.outputs.base }}
-          head-ref: ${{ steps.diffs.outputs.head }}
-          fail-on-severity: critical
-        continue-on-error: ${{ env.ENFORCEMENT != 'block' }}
-
-  # ------- Secret scanning / Push protection / DG / ADS -------
+  # --- Secrets / Repo Security Flags ---
   security_settings_guard:
-    name: Secret scanning / Push protection / DG / ADS
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
-      - name: Ensure jq present
-        run: |
-          command -v jq >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y jq)
-
-      - name: Check repo security_and_analysis flags
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          DATA=$(gh api \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            repos/${{ github.repository }} || echo '{}')
-          SEC=$(echo "$DATA" | jq -r '.security_and_analysis // {}')
-          SS=$(echo "$SEC" | jq -r '.secret_scanning.status // "unknown"')
-          PP=$(echo "$SEC" | jq -r '.secret_scanning_push_protection.status // "unknown"')
-          DG=$(echo "$SEC" | jq -r '.dependency_graph.status // "unknown"')
-          ADS=$(echo "$SEC" | jq -r '.automatic_dependency_submission.status // "unknown"')
-          GHAS=$(echo "$SEC" | jq -r '.advanced_security.status // "absent"')
-          echo "Secret scanning: $SS, Push protection: $PP, Dependency graph: $DG, Automatic submission: $ADS, GHAS: $GHAS"
-
-          # Нет прав читать настройки? — предупреждение, но не фейлим
-          if [ "$SS" = "unknown" ] || [ "$PP" = "unknown" ]; then
-            echo "::warning::Не удалось прочитать Code security settings (нужны права администратора репо). Продолжаю без BLOCK."
-            exit 0
-          fi
-
+      - run: |
+          DATA=$(gh api repos/${{ github.repository }})
+          SEC=$(echo "$DATA" | jq -r '.security_and_analysis')
+          SS=$(echo "$SEC" | jq -r '.secret_scanning.status')
+          PP=$(echo "$SEC" | jq -r '.secret_scanning_push_protection.status')
+          echo "Secret scanning: $SS, Push protection: $PP"
           if [ "$SS" != "enabled" ] || [ "$PP" != "enabled" ]; then
             if [ "${ENFORCEMENT}" = "block" ]; then
-              echo "Secret scanning/Push protection not fully enabled ⇒ BLOCK"
               exit 1
             else
-              echo "::warning::Enable Secret scanning + Push protection in Settings → Code security and analysis"
+              echo "::warning::Enable Secret scanning + Push protection"
             fi
           fi
 
-  # -------- Promote → production (только push в main) --------
+  # --- Promote to Production ---
   promote_to_prod:
-    name: Promote → production (requires env approval)
-    needs: [ codeql, build_and_attest, security_settings_guard, dependency_review ]
-    if: ${{ always() && github.event_name == 'push' && startsWith(github.ref, 'refs/heads/main') }}
+    needs: [ build_and_attest, security_settings_guard ]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     environment:
-      name: production   # включи Required reviewers; self-approval запрети
-    # локальный замок ТОЛЬКО на деплой (чтобы проверки не ждали аппрува)
+      name: production
     concurrency:
       group: deploy-${{ github.ref_name }}
       cancel-in-progress: true
     steps:
-      - name: Gate summary
-        run: |
-          echo "ENFORCEMENT=${ENFORCEMENT}"
-          echo "All upstream gates completed. This job requires environment approval in GitHub UI."
+      - run: |
+          echo "All upstream gates passed. Waiting for env approval…"
