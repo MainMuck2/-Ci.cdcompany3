@@ -23,7 +23,7 @@ permissions:
   attestations: write
 
 env:
-  # main → block, остальные → warn (переопределяется вручную через dispatch)
+  # main → block, остальные → warn (можно вручную через dispatch)
   ENFORCEMENT: ${{ (github.event_name == 'workflow_dispatch' && inputs.enforcement) || (github.ref_name == github.event.repository.default_branch && 'block' || 'warn') }}
 
 jobs:
@@ -128,12 +128,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          WF_NOREF="${WFREF%@*}" # убираем "@ref" из workflow_ref для --signer-workflow
-          tries=12  # ~2 мин (12×10с)
+          WF_NOREF="${WFREF%@*}"          # убираем "@ref" для --signer-workflow
+          OWNER="${REPO%/*}"
+          tries=12                        # ~2 мин (12×10с)
           for i in $(seq 1 $tries); do
             echo "→ Verify attempt $i/$tries…"
             if gh attestation verify \
                   --repo "$REPO" \
+                  --owner "$OWNER" \
                   --subject-path artifact.txt \
                   --predicate-type "https://slsa.dev/provenance/v1" \
                   --signer-workflow "$WF_NOREF" \
@@ -206,6 +208,8 @@ jobs:
 
       - name: Check repo security_and_analysis flags
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           DATA=$(gh api \
@@ -234,8 +238,6 @@ jobs:
               echo "::warning::Enable Secret scanning + Push protection in Settings → Code security and analysis"
             fi
           fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # -------- Promote → production (только push в main) --------
   promote_to_prod:
