@@ -119,6 +119,26 @@ jobs:
           subject-path: artifact.txt
           sbom-path: sbom.spdx.json
 
+      - name: Ensure 'gh attestation' is available
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh help attestation >/dev/null 2>&1; then
+            echo "✓ gh attestation доступна"
+          else
+            echo "→ Устанавливаю расширение gh-attestation (fallback)…"
+            gh extension install github/gh-attestation || true
+          fi
+          if gh attestation --help >/dev/null 2>&1; then
+            echo "✓ Подкоманда готова"
+          else
+            echo "→ Обновляю gh CLI из apt…"
+            sudo apt-get update && sudo apt-get install -y gh
+          fi
+          gh attestation --help >/dev/null 2>&1 || { echo "::error::'gh attestation' недоступна"; exit 1; }
+
       - name: Verify attestations (pre-promote, signer pinned, with retries)
         if: github.event_name == 'push'
         env:
@@ -128,14 +148,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          WF_NOREF="${WFREF%@*}"          # убираем "@ref" для --signer-workflow
-          OWNER="${REPO%/*}"
-          tries=12                        # ~2 мин (12×10с)
+          WF_NOREF="${WFREF%@*}" # убираем "@ref" из workflow_ref для --signer-workflow
+          tries=12               # ~2 мин (12×10с)
           for i in $(seq 1 $tries); do
             echo "→ Verify attempt $i/$tries…"
             if gh attestation verify \
                   --repo "$REPO" \
-                  --owner "$OWNER" \
                   --subject-path artifact.txt \
                   --predicate-type "https://slsa.dev/provenance/v1" \
                   --signer-workflow "$WF_NOREF" \
