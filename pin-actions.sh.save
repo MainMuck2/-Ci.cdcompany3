@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+need() { command -v "$1" >/dev/null || { echo "Install $1" ; exit 1; }; }
+need gh
+need jq
+
+pin() {
+  local repo="$1" tag="$2"
+  # получаем SHA тега; если тег аннотированный — разыменуем до коммита
+  local ref_json; ref_json=$(gh api "repos/$repo/git/ref/tags/$tag")
+  local obj_sha;  obj_sha=$(jq -r '.object.sha' <<<"$ref_json")
+  local obj_type; obj_type=$(jq -r '.object.type' <<<"$ref_json")
+  if [[ "$obj_type" == "tag" ]]; then
+    gh api "repos/$repo/git/tags/$obj_sha" -q '.object.sha'
+  else
+    echo "$obj_sha"
+  fi
+}
+
+declare -A PINS
+PINS["actions/checkout@v4"]=$(pin actions/checkout v4)
+PINS["actions/upload-artifact@v4"]=$(pin actions/upload-artifact v4)
+PINS["actions/download-artifact@v4"]=$(pin actions/download-artifact v4)
+PINS["actions/dependency-review-action@v4"]=$(pin actions/dependency-review-action v4)
+PINS["aws-actions/configure-aws-credentials@v4"]=$(pin aws-actions/configure-aws-credentials v4)
+PINS["actions/attest-build-provenance@v1"]=$(pin actions/atte
+
+for k in "${!PINS[@]}"; do
+  repo_tag="${k%@*}"  # actions/checkout
+  sha="${PINS[$k]}"
+  # заменяем все варианты uses: <repo>(/subdir)@<tag>
+  # пример: uses: github/codeql-action/init@v3 -> @<sha>
+  sed -E -i "s#(uses:\s*${repo_tag}(/[a-zA-Z0-9._-]+)?@)[^[:space:]]+#\1${sha}#g" "$out"
+done
+
+echo "Pinned file written to: $out"
+echo "Pins used:"
+printf '  %s -> %s\n' "${!PINS[@]}" | sort
+chmod +x pin-actions.sh
