@@ -19,7 +19,6 @@ env:
   ENFORCEMENT: ${{ github.ref_name == github.event.repository.default_branch && 'block' || 'warn' }}
 
 jobs:
-  # --- Static & Dependency Analysis ---
   codeql:
     runs-on: ubuntu-latest
     steps:
@@ -69,7 +68,6 @@ jobs:
           fail-on-severity: critical
         continue-on-error: ${{ env.ENFORCEMENT != 'block' }}
 
-  # --- Verify action publishers / pinning (allow-list) ---
   verify_action_publishers:
     runs-on: ubuntu-latest
     steps:
@@ -115,7 +113,6 @@ jobs:
             exit 1
           fi
 
-  # --- Build + SBOM + Attestation ---
   build_and_attest:
     needs: [ codeql, dependency_review, verify_action_publishers ]
     runs-on: ubuntu-latest
@@ -129,10 +126,13 @@ jobs:
           echo "hello $(date -u +%FT%TZ)" > artifact.txt
           sha256sum artifact.txt | tee checksums.txt
 
-      - name: Export SBOM (prefer GitHub, fallback to Syft for artifact.txt)
+      - name: Export SBOM (prefer GitHub, fallback to Syft for artifact.txt) + ensure checksum
         id: sbom
         run: |
           set -euo pipefail
+          ART_DIGEST="$(sha256sum artifact.txt | awk '{print $1}')"
+
+          # 1) Попытка взять SBOM из GitHub
           GH_OK=0
           if gh api "repos/${{ github.repository }}/dependency-graph/sbom" -f ref="${{ github.sha }}" \
                -H "Accept: application/vnd.github+json" >/tmp/gh-sbom.json 2>/dev/null; then
@@ -141,14 +141,33 @@ jobs:
               GH_OK=1
             fi
           fi
-          # Если GitHub SBOM пустой/без файла artifact.txt — генерируем syft для файла
+
+          # 2) Если GitHub SBOM пустой/без файла — генерим syft для файла
           if [ $GH_OK -ne 1 ] || ! jq -e '.files[]? | select(.fileName=="artifact.txt")' sbom.spdx.json >/dev/null 2>&1; then
             echo "GitHub SBOM не содержит artifact.txt — генерируем SBOM Syft для файла"
             curl -sSfL https://get.anchore.io/syft | sh -s -- -b /usr/local/bin
             syft "file:artifact.txt" -o spdx-json=sbom.spdx.json
           fi
+
+          # 3) Гарантированно добавляем/обновляем checksum для artifact.txt в SBOM
+          tmp=$(mktemp)
+          jq --arg d "$ART_DIGEST" '
+            .files = (
+              # удаляем старую запись artifact.txt (если была)
+              ((.files // []) | map(select(.fileName != "artifact.txt")))
+              +
+              # добавляем корректную запись с SHA256
+              [ {
+                  "fileName":"artifact.txt",
+                  "SPDXID":"SPDXRef-File-artifact.txt",
+                  "checksums":[{"algorithm":"SHA256","checksumValue":$d}]
+                } ]
+            )
+          ' sbom.spdx.json > "$tmp"
+          mv "$tmp" sbom.spdx.json
+
           # sanity
-          jq -e '.SPDXID and (.files // [])' sbom.spdx.json >/dev/null
+          jq -e '.SPDXID and (.files // []) and (.files[] | select(.fileName=="artifact.txt") | .checksums[] | select(.algorithm=="SHA256"))' sbom.spdx.json >/dev/null
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -196,7 +215,6 @@ jobs:
             echo "::warning::Attestation verification failed"
           fi
 
-  # --- Trust-store guard (JWKS) ---
   trust_store_guard:
     runs-on: ubuntu-latest
     steps:
@@ -216,7 +234,6 @@ jobs:
             fi
           fi
 
-  # --- Secrets / Repo Security Flags ---
   security_settings_guard:
     runs-on: ubuntu-latest
     steps:
@@ -233,18 +250,17 @@ jobs:
           set -euo pipefail
           umask 077
           RAW="$(aws secretsmanager get-secret-value --secret-id ci/github/app-private-key --query SecretString --output text)"
-          if printf '%s' "$RAW" | head -n1 | grep -q '-----BEGIN '; then
+          if printf '%s' "$RAW" | head -n1 | grep -q -- '-----BEGIN '; then
             printf '%s' "$RAW" > app.pem
           else
             VAL="$(printf '%s' "$RAW" | jq -r '.value // empty' || true)"
-            if [ -n "${VAL:-}" ] && printf '%s' "$VAL" | head -n1 | grep -q '-----BEGIN '; then
+            if [ -n "${VAL:-}" ] && printf '%s' "$VAL" | head -n1 | grep -q -- '-----BEGIN '; then
               printf '%s' "$VAL" > app.pem
             else
               echo "::error::Secret is not a PEM. Store raw PEM or JSON {\"value\":\"PEM\"}."
               exit 1
             fi
           fi
-          # sanity: ключ читается OpenSSL'ом
           openssl pkey -in app.pem -noout >/dev/null 2>&1 || { echo "::error::Invalid PEM in app.pem"; exit 1; }
           echo "app.pem ready"
 
@@ -294,7 +310,6 @@ jobs:
             exit 1
           fi
 
-  # --- KMS sign + verify (OIDC→AWS) ---
   kms_sign_and_verify:
     needs: [ build_and_attest, trust_store_guard ]
     runs-on: ubuntu-latest
@@ -332,7 +347,6 @@ jobs:
             -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:digest -sigopt rsa_mgf1_md:sha256 \
             artifact.txt
 
-  # --- SBOM ↔ artifact digest ENFORCE ---
   sbom_enforce:
     needs: [ build_and_attest ]
     runs-on: ubuntu-latest
@@ -361,7 +375,6 @@ jobs:
             echo "SBOM digest matches."
           fi
 
-  # --- IaC / Config scan (presence-gate) ---
   iac_scan:
     runs-on: ubuntu-latest
     steps:
@@ -375,7 +388,7 @@ jobs:
       - name: Run IaC/config scan (WARN)
         run: |
           set -euo pipefail
-          trivy config --quiet --exit-code 0 --format table --no-progress . | tee iac_report.txt
+          trivy config -q --exit-code 0 --format table . | tee iac_report.txt
           echo "IaC scan completed"
       - name: Upload IaC report
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -383,7 +396,6 @@ jobs:
           name: iac-report
           path: iac_report.txt
 
-  # --- Promote to Production ---
   promote_to_prod:
     needs: [ build_and_attest, security_settings_guard, kms_sign_and_verify, sbom_enforce, iac_scan, verify_action_publishers ]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
