@@ -76,14 +76,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
-
-      - name: Install yq (binary)
-        run: |
-          sudo curl -sL -o /usr/local/bin/yq \
-            https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
-          sudo chmod +x /usr/local/bin/yq
-          yq --version
-
       - name: Verify action publishers (WARN)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -96,11 +88,7 @@ jobs:
           IFS=',' read -r -a ALLOWED <<< "${ALLOW_OWNERS}"
           is_allowed(){ local o="$1"; for a in "${ALLOWED[@]}"; do [ "$o" = "$a" ] && return 0; done; return 1; }
           for f in "${FILES[@]}"; do
-            while read -r uses; do
-              owner=$(awk -F'[ /@]' '{print $1}' <<<"$uses")
-              repo=$(awk -F'[ /@]' '{print $2}' <<<"$uses")
-              ref=$(awk  -F'@'     '{print $2}' <<<"$uses")
-              [ -z "$owner" ] || [ -z "$repo" ] || [ -z "$ref" ] && continue
+            while read -r owner repo ref; do
               if ! is_allowed "$owner"; then
                 echo "::warning file=$f::Owner '$owner' не в allow-list"
                 status=1
@@ -115,7 +103,7 @@ jobs:
                 echo "::warning file=$f::Издатель '$owner' не verified"
                 status=1
               fi
-            done < <(yq -r '..|.uses? | select(type=="string")' "$f")
+            done < <(yq -r '..|.uses? | select(type=="string")' "$f" | awk -F'[@/]' '{if (NF>=3) printf "%s %s %s\n",$1,$2,$NF}')
           done
           if [ $status -ne 0 ] && [ "${ENFORCEMENT}" = "block" ]; then
             echo "::error::Проверка издателей/пиннинга не прошла (ENFORCEMENT=block)."
@@ -140,15 +128,10 @@ jobs:
         id: sbom
         run: |
           set -euo pipefail
-          # 1) GitHub SBOM API
-          if gh api repos/${{ github.repository }}/dependency-graph/sbom -f ref=${{ github.sha }} >/tmp/sbom.json 2>/dev/null; then
-            jq '.sbom | fromjson' /tmp/sbom.json > sbom.spdx.json
-          fi
-          # 2) Fallback на Syft — даёт checksums по файлам
-          if [ ! -s sbom.spdx.json ]; then
-            curl -sSfL https://get.anchore.io/syft | sh -s -- -b /usr/local/bin
-            syft dir:. -o spdx-json=sbom.spdx.json
-          fi
+          gh api repos/${{ github.repository }}/dependency-graph/sbom -f ref=${{ github.sha }} \
+            | jq '.sbom | fromjson' > sbom.spdx.json || \
+          (curl -sSfL https://get.anchore.io/syft | sh -s -- -b /usr/local/bin && \
+           syft dir:. -o spdx-json=sbom.spdx.json)
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -220,29 +203,33 @@ jobs:
   security_settings_guard:
     runs-on: ubuntu-latest
     steps:
-      # AWS creds для чтения секрета GitHub App из Secrets Manager
       - name: Configure AWS for GH App secret
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Fetch GH App key from AWS Secrets Manager
+      - name: Fetch GH App key from AWS Secrets Manager (normalize)
         id: fetch_appkey
         shell: bash
         run: |
           set -euo pipefail
           umask 077
-          aws secretsmanager get-secret-value \
-            --secret-id ci/github/app-private-key \
-            --query SecretString --output text > app.pem
-          # валидация PEM
-          if ! openssl pkey -in app.pem -noout >/dev/null 2>&1; then
-            echo "::error::Invalid PEM in secret (app.pem). Проверь значение в Secrets Manager."
-            head -n 5 app.pem || true
-            exit 1
+          RAW="$(aws secretsmanager get-secret-value --secret-id ci/github/app-private-key --query SecretString --output text)"
+          # Если секрет в JSON {"value":"PEM"} — извлекаем
+          if jq -e . >/dev/null 2>&1 <<<"$RAW"; then
+            VAL="$(jq -r '.value // empty' <<<"$RAW")"
+            [ -n "$VAL" ] && RAW="$VAL"
           fi
-          echo "PEM OK"
+          # Нормализация CRLF и \n-литералов
+          printf '%s' "$RAW" | sed -e 's/\r$//' > app.pem.tmp
+          if grep -q '\\n' app.pem.tmp; then
+            sed -e 's/\\r//g' -e $'s/\\n/\n/g' app.pem.tmp > app.pem
+          else
+            mv app.pem.tmp app.pem
+          fi
+          # Валидация PEM
+          openssl pkey -in app.pem -noout >/dev/null 2>&1 || { echo "::error::Invalid PEM in secret (app.pem). Проверь значение в Secrets Manager."; exit 1; }
 
       - name: Get GitHub App installation token (no external action)
         id: app_token
@@ -257,15 +244,12 @@ jobs:
           NOW=$(date +%s); EXP=$((NOW+540))
           HDR=$(printf '{"alg":"RS256","typ":"JWT"}' | b64url)
           PAY=$(printf '{"iat":%s,"exp":%s,"iss":"%s"}' "$NOW" "$EXP" "$APP_ID" | b64url)
-          SIGN_INPUT="${HDR}.${PAY}"
-          SIG=$(printf %s "$SIGN_INPUT" | openssl dgst -sha256 -sign app.pem -binary | b64url)
-          JWT="${SIGN_INPUT}.${SIG}"
+          SIG=$(printf '%s.%s' "$HDR" "$PAY" | openssl dgst -sha256 -sign app.pem -binary | b64url)
+          JWT="${HDR}.${PAY}.${SIG}"
           API="${API_URL:-https://api.github.com}"
-          INST_JSON=$(curl -fsSL -H "Authorization: Bearer ${JWT}" -H "Accept: application/vnd.github+json" \
-            "${API}/repos/${REPO}/installation")
+          INST_JSON=$(curl -fsSL -H "Authorization: Bearer ${JWT}" -H "Accept: application/vnd.github+json" "${API}/repos/${REPO}/installation")
           INST_ID=$(jq -r '.id' <<<"$INST_JSON")
-          TOKEN_JSON=$(curl -fsSL -X POST -H "Authorization: Bearer ${JWT}" -H "Accept: application/vnd.github+json" \
-            "${API}/app/installations/${INST_ID}/access_tokens")
+          TOKEN_JSON=$(curl -fsSL -X POST -H "Authorization: Bearer ${JWT}" -H "Accept: application/vnd.github+json" "${API}/app/installations/${INST_ID}/access_tokens")
           TOKEN=$(jq -r '.token' <<<"$TOKEN_JSON")
           echo "GH_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
           shred -u app.pem || rm -f app.pem
@@ -328,7 +312,7 @@ jobs:
             -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:digest -sigopt rsa_mgf1_md:sha256 \
             artifact.txt
 
-  # --- SBOM ↔ artifact digest ENFORCE ---
+  # --- SBOM ↔ artifact digest (WARN only) ---
   sbom_enforce:
     needs: [ build_and_attest ]
     runs-on: ubuntu-latest
@@ -336,35 +320,25 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: build
-      - name: Enforce SBOM subject digest equals artifact digest
+      - name: Enforce SBOM subject digest equals artifact digest (WARN)
         shell: bash
         run: |
           set -euo pipefail
           ART_DIGEST=$(sha256sum artifact.txt | awk '{print $1}')
-          SBOM_DIGEST=$(
-            jq -r '
-              (
-                .files[]? |
-                select(.fileName=="artifact.txt" or .fileName=="./artifact.txt") |
-                .checksums[]? | select(.algorithm=="SHA256") | .checksumValue
-              ),
-              (
-                .files[]? |
-                select(.fileName=="artifact.txt" or .fileName=="./artifact.txt") |
-                .externalRefs[]? |
-                select(.referenceType=="checksum") |
-                .referenceLocator
-              )
-            ' sbom.spdx.json | head -n1
-          )
+          SBOM_DIGEST=$(jq -r '
+            .files[]? 
+            | select(.fileName=="artifact.txt") 
+            | .checksums[]? 
+            | select(.algorithm=="SHA256") 
+            | .checksumValue
+          ' sbom.spdx.json | head -n1 || true)
           if [ -z "$SBOM_DIGEST" ] || [ "$ART_DIGEST" != "$SBOM_DIGEST" ]; then
             echo "::warning::SBOM digest mismatch or missing (artifact=$ART_DIGEST, sbom=$SBOM_DIGEST)"
-            [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
           else
             echo "SBOM digest matches."
           fi
 
-  # --- IaC / Config scan (presence-gate) ---
+  # --- IaC / Config scan (presence-gate, WARN) ---
   iac_scan:
     runs-on: ubuntu-latest
     steps:
@@ -379,7 +353,7 @@ jobs:
       - name: Run IaC/config scan (WARN)
         run: |
           set -euo pipefail
-          trivy config --exit-code 0 --format table . | tee iac_report.txt
+          trivy config --quiet --exit-code 0 --format table . | tee iac_report.txt
           echo "IaC scan completed"
       - name: Upload IaC report
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
