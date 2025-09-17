@@ -122,12 +122,11 @@ jobs:
           set -euo pipefail
           WF_NOREF="${GITHUB_WORKFLOW_REF%@*}"
           for i in $(seq 1 6); do
-            if gh attestation verify \
+            if gh attestation verify artifact.txt \
                   --repo "${{ github.repository }}" \
-                  --subject-path artifact.txt \
                   --predicate-type "https://slsa.dev/provenance/v1" \
                   --signer-workflow "$WF_NOREF" \
-                  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+                  --cert-oidc-issuer "https://token.actions.githubusercontent.com" \
                   --deny-self-hosted-runners \
                   --limit 50 ; then
               echo "✓ Attestation verified"
@@ -175,32 +174,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # 1) Сохраняем приватный ключ в файл
           umask 077
           echo "${APP_PRIVATE_KEY}" > app.pem
-
-          # 2) Собираем JWT для GitHub App (RS256)
           b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
           NOW=$(date +%s)
-          EXP=$((NOW+540)) # 9 минут
+          EXP=$((NOW+540))
           HDR=$(printf '{"alg":"RS256","typ":"JWT"}' | b64url)
           PAY=$(printf '{"iat":%s,"exp":%s,"iss":"%s"}' "$NOW" "$EXP" "$APP_ID" | b64url)
           SIGN_INPUT="${HDR}.${PAY}"
           SIG=$(printf %s "$SIGN_INPUT" | openssl dgst -sha256 -sign app.pem -binary | b64url)
           JWT="${SIGN_INPUT}.${SIG}"
-
-          # 3) Узнаём installation_id для текущего репо
           API="${API_URL:-https://api.github.com}"
           INST_JSON=$(curl -fsSL -H "Authorization: Bearer ${JWT}" -H "Accept: application/vnd.github+json" \
             "${API}/repos/${REPO}/installation")
           INST_ID=$(jq -r '.id' <<<"$INST_JSON")
-
-          # 4) Получаем installation access token
           TOKEN_JSON=$(curl -fsSL -X POST -H "Authorization: Bearer ${JWT}" -H "Accept: application/vnd.github+json" \
             "${API}/app/installations/${INST_ID}/access_tokens")
           TOKEN=$(jq -r '.token' <<<"$TOKEN_JSON")
-
-          # 5) Передаём токен дальше как переменную окружения
           echo "GH_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
           rm -f app.pem
 
