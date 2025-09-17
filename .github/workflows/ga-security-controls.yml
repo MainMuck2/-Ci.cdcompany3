@@ -5,7 +5,7 @@ on:
     branches: [ "main", "release/*" ]
   pull_request:
     branches: [ "main", "release/*" ]
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [ opened, synchronize, reopened, ready_for_review ]
   workflow_dispatch:
 
 permissions:
@@ -34,6 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+
       - name: Compute base/head refs for dependency review
         id: deprefs
         shell: bash
@@ -75,6 +76,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - name: Install yq
+        run: |
+          set -euo pipefail
+          sudo curl -sSL -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
       - name: Verify action publishers (WARN)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -82,14 +88,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t FILES < <(git ls-files '.github/workflows/*.yml' '.github/workflows/*.yaml' 2>/dev/null)
+          mapfile -t FILES < <(git ls-files '.github/workflows/*.yml' '.github/workflows/*.yaml' 2>/dev/null || true)
+          [ ${#FILES[@]} -eq 0 ] && exit 0
           status=0
           IFS=',' read -r -a ALLOWED <<< "${ALLOW_OWNERS}"
           is_allowed(){ local o="$1"; for a in "${ALLOWED[@]}"; do [ "$o" = "$a" ] && return 0; done; return 1; }
           for f in "${FILES[@]}"; do
             while read -r owner repo ref; do
+              [ -z "$owner" ] && continue
               if ! is_allowed "$owner"; then
-                echo "::warning file=$f::Owner '$owner' не в allow-list"
+                echo "::warning file=$f::Owner '$owner' не в allow-list (${ALLOW_OWNERS})"
                 status=1
               fi
               if ! [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then
@@ -102,7 +110,7 @@ jobs:
                 echo "::warning file=$f::Издатель '$owner' не verified"
                 status=1
               fi
-            done < <(yq -r '..|.uses? | select(type=="string")' "$f" | awk -F'[@/]' '{if (NF>=3) printf "%s %s %s\n",$1,$2,$NF}')
+            done < <(yq -r '.. | .uses? | select(type=="string")' "$f" | awk -F'[@/]' '{ if (NF>=3) printf "%s %s %s\n",$1,$2,$NF }')
           done
           if [ $status -ne 0 ] && [ "${ENFORCEMENT}" = "block" ]; then
             echo "::error::Проверка издателей/пиннинга не прошла (ENFORCEMENT=block)."
@@ -202,8 +210,7 @@ jobs:
   security_settings_guard:
     runs-on: ubuntu-latest
     steps:
-      # Получаем приватный ключ GitHub App из AWS Secrets Manager (не из GitHub Secrets)
-      - name: Configure AWS for GH App secret
+      - name: Configure AWS for GH App secret (OIDC)
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
@@ -218,6 +225,7 @@ jobs:
           aws secretsmanager get-secret-value \
             --secret-id ci/github/app-private-key \
             --query SecretString --output text > app.pem
+          test -s app.pem
 
       - name: Get GitHub App installation token (no external action)
         id: app_token
@@ -274,15 +282,18 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+
       - name: Download build artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: build
+
       - name: Configure AWS (OIDC)
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+
       - name: KMS Sign artifact.txt (PS256)
         run: |
           set -euo pipefail
@@ -292,12 +303,14 @@ jobs:
             --message-type RAW \
             --message fileb://artifact.txt \
             --query Signature --output text | base64 -d > artifact.sig
+
       - name: Fetch public key and verify with OpenSSL (PSS)
         run: |
           set -euo pipefail
           aws kms get-public-key --key-id "${{ vars.AWS_KMS_KEY_ID }}" \
             --query PublicKey --output text | base64 -d > aws-pub.der
           openssl pkey -pubin -inform DER -in aws-pub.der -out aws-pub.pem
+          # Верификация PSS со строго заданными опциями
           openssl dgst -sha256 \
             -verify aws-pub.pem -signature artifact.sig \
             -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:digest -sigopt rsa_mgf1_md:sha256 \
@@ -316,7 +329,12 @@ jobs:
         run: |
           set -euo pipefail
           ART_DIGEST=$(sha256sum artifact.txt | awk '{print $1}')
-          SBOM_DIGEST=$(jq -r '.artifacts//.packages//[]? | select(.SPDXID=="SPDXRef-Root"|not) | .checksums[]? | select(.algorithm=="SHA256") | .checksumValue' sbom.spdx.json | head -n1 || true)
+          SBOM_DIGEST=$(jq -r '
+            .artifacts? // .packages? // [] |
+            .[]? |
+            ( .checksums? // .externalRefs? // [] ) |
+            ( .[]? | select(.algorithm?=="SHA256" or .referenceType?=="checksum") | .checksumValue? // .referenceLocator? )' sbom.spdx.json \
+          | head -n1 || true)
           if [ -z "$SBOM_DIGEST" ] || [ "$ART_DIGEST" != "$SBOM_DIGEST" ]; then
             echo "::warning::SBOM digest mismatch or missing (artifact=$ART_DIGEST, sbom=$SBOM_DIGEST)"
             [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
@@ -329,19 +347,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
-      - name: Install trivy (config scan)
+
+      - name: Install trivy (reliable script)
         run: |
           set -euo pipefail
-          sudo apt-get update -y
-          sudo apt-get install -y wget
-          wget -qO- https://github.com/aquasecurity/trivy/releases/latest/download/trivy_Linux-64bit.tar.gz | tar xz
-          sudo mv trivy /usr/local/bin/
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin
+          trivy --version
+
       - name: Run IaC/config scan (WARN)
         run: |
           set -euo pipefail
-          # Сканим репозиторий на IaC мисконфиги. Нефатально при warn.
           trivy config --quiet --exit-code 0 --format table --no-progress . | tee iac_report.txt
           echo "IaC scan completed"
+
       - name: Upload IaC report
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
