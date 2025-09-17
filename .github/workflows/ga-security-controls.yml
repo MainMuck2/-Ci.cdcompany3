@@ -107,7 +107,28 @@ jobs:
             echo "::warning::Attestation verification failed"
           fi
 
-  # --- Secrets / Repo Security Flags ---
+  # --- Trust-store guard (JWKS present + sane) ---
+  trust_store_guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: ".github/trust/publishers.jwks.json"
+      - name: Validate JWKS exists and matches AWS_KMS_KEY_ID
+        run: |
+          set -euo pipefail
+          test -f .github/trust/publishers.jwks.json || { echo "::error::JWKS missing"; exit 1; }
+          jq -e '.keys|length>0' .github/trust/publishers.jwks.json >/dev/null
+          if [ -n "${{ vars.AWS_KMS_KEY_ID }}" ]; then
+            KID_EXPECT="AWS:${{ vars.AWS_KMS_KEY_ID }}"
+            if ! jq -r '.keys[].kid' .github/trust/publishers.jwks.json | grep -Fx "$KID_EXPECT" >/dev/null; then
+              echo "::warning::JWKS kid mismatch (expected $KID_EXPECT)"
+              [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
+            fi
+          fi
+          echo "JWKS OK"
+
+  # --- Repo Security flags (Secrets scanning, Push protection) ---
   security_settings_guard:
     runs-on: ubuntu-latest
     steps:
@@ -125,9 +146,89 @@ jobs:
             fi
           fi
 
+  # --- KMS sign + verify against tenant trust-store (JWKS) ---
+  kms_sign_and_verify:
+    needs: [ build_and_attest, trust_store_guard ]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build
+          path: build_out
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Compute SHA256 digest (binary)
+        working-directory: build_out
+        run: |
+          set -euo pipefail
+          sha256sum artifact.txt | awk '{print $1}' | xxd -r -p > artifact.sha256.bin
+
+      - name: KMS Sign digest (RSASSA_PSS_SHA_256)
+        working-directory: build_out
+        run: |
+          set -euo pipefail
+          aws kms sign \
+            --key-id "${{ vars.AWS_KMS_KEY_ID }}" \
+            --message-type DIGEST \
+            --signing-algorithm RSASSA_PSS_SHA_256 \
+            --message fileb://artifact.sha256.bin \
+            --output json > sig.json
+          jq -r .Signature sig.json | base64 -d > sig.bin
+
+      - name: Build PEM from JWKS (kid == AWS:${{ vars.AWS_KMS_KEY_ID }})
+        run: |
+          python3 - <<'PY'
+          import json,base64,sys
+          from cryptography.hazmat.primitives.asymmetric import rsa
+          from cryptography.hazmat.primitives import serialization
+          exp_kid = "AWS:" + "${{ vars.AWS_KMS_KEY_ID }}"
+          jwks = json.load(open(".github/trust/publishers.jwks.json"))
+          key = next((k for k in jwks["keys"] if k.get("kid")==exp_kid), None)
+          if not key:
+            print(f"::error::kid {exp_kid} not found in JWKS", file=sys.stderr); sys.exit(1)
+          def b64u_decode(s):
+            s += "=" * (-len(s)%4)
+            return base64.urlsafe_b64decode(s.encode())
+          n = int.from_bytes(b64u_decode(key["n"]), "big")
+          e = int.from_bytes(b64u_decode(key["e"]), "big")
+          pub = rsa.RSAPublicNumbers(e, n).public_key()
+          pem = pub.public_bytes(serialization.Encoding.PEM,
+                                 serialization.PublicFormat.SubjectPublicKeyInfo)
+          open("trust_pub.pem","wb").write(pem)
+          print("PEM ready")
+          PY
+
+      - name: Verify signature with OpenSSL (RSA-PSS SHA256) using JWKS key
+        working-directory: build_out
+        run: |
+          set -e
+          openssl pkeyutl -verify -pubin -inkey ../trust_pub.pem \
+            -pkeyopt digest:sha256 -pkeyopt rsa_padding_mode:pss -pkeyopt rsa_pss_saltlen:-1 \
+            -in artifact.sha256.bin -sigfile sig.bin
+
+      - name: Enforcement on verify
+        if: failure()
+        run: |
+          if [ "${ENFORCEMENT}" = "block" ]; then
+            echo "::error::KMS verify failed against tenant trust-store"; exit 1
+          else
+            echo "::warning::KMS verify failed against tenant trust-store"; exit 0
+          fi
+
   # --- Promote to Production ---
   promote_to_prod:
-    needs: [ build_and_attest, security_settings_guard ]
+    needs: [ build_and_attest, security_settings_guard, trust_store_guard, kms_sign_and_verify ]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     environment:
@@ -136,5 +237,4 @@ jobs:
       group: deploy-${{ github.ref_name }}
       cancel-in-progress: true
     steps:
-      - run: |
-          echo "All upstream gates passed. Waiting for env approval…"
+      - run: echo "All upstream gates passed. Waiting for env approval…"

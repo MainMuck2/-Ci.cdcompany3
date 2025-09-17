@@ -1,0 +1,13 @@
+{
+  "keys": [
+    {
+      "kty": "RSA",
+      "kid": "AWS:arn:aws:kms:eu-central-1:478860598286:key/d9f74f21-8921-429f-ba29-261f451136b6",
+      "use": "sig",
+      "alg": "PS256",
+      "n": "0zHvlrM-Li9WdpSpn3xboS3q13gZ-GPOs1xHyTO3ZdZ-LcvkHnmp_4Pe__ixNSqZyulJK-y4_PTt0UMBdRlZiXCUdSpuM3LxVIi2H6rNdcFbLSIP9j0yRRIM_IZrK0YoqzlykJlIWoGkpTQEi4CjjaLr158VQJhEEXHkheABdURdSDrJnSfZfZtfOa5OBoLT0v2AaUWVBFPC-KtjM1nr3l2r0NG70w3taRuYrjEWYQ01PJScqCUnIg0D2iw3UUatP5-9sNI0FPaoolBTup5o4_bZfm0Lh2ILwizf2j16cIz3kKSPMycx8TKSDk4Y4MO3VeV-1M8OgUMVV0qqI7eooQ",
+      "e": "AQAB"
+    }
+  ]
+}
+
