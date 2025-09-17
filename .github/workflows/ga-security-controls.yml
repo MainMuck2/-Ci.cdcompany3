@@ -125,8 +125,8 @@ jobs:
             if gh attestation verify artifact.txt \
                   --repo "${{ github.repository }}" \
                   --predicate-type "https://slsa.dev/provenance/v1" \
-                  --signer-workflow "$WF_NOREF" \
                   --cert-oidc-issuer "https://token.actions.githubusercontent.com" \
+                  --signer-workflow "$WF_NOREF" \
                   --deny-self-hosted-runners \
                   --limit 50 ; then
               echo "✓ Attestation verified"
@@ -229,18 +229,41 @@ jobs:
         with:
           name: build
 
+      - name: Validate AWS inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROLE="${{ vars.AWS_ROLE_ARN }}"
+          REGION="${{ vars.AWS_REGION }}"
+          KMS="${{ vars.AWS_KMS_KEY_ID }}"
+          if [ -z "$ROLE" ]; then
+            echo "::error::Set Actions Variable AWS_ROLE_ARN (Settings → Secrets and variables → Actions → Variables)."
+            exit 1
+          fi
+          if [ -z "$REGION" ]; then
+            echo "::error::Set Actions Variable AWS_REGION (e.g. us-east-1)."
+            exit 1
+          fi
+          if [ -z "$KMS" ]; then
+            echo "::error::Set Actions Variable AWS_KMS_KEY_ID (KMS key id or ARN)."
+            exit 1
+          fi
+          echo "AWS_ROLE_ARN=$ROLE" >> "$GITHUB_ENV"
+          echo "AWS_REGION=$REGION" >> "$GITHUB_ENV"
+          echo "AWS_KMS_KEY_ID=$KMS" >> "$GITHUB_ENV"
+
       - name: Configure AWS (OIDC)
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: KMS Sign artifact.txt (PS256)
         id: kmssign
         run: |
           set -euo pipefail
           aws kms sign \
-            --key-id "${{ vars.AWS_KMS_KEY_ID }}" \
+            --key-id "${AWS_KMS_KEY_ID}" \
             --signing-algorithm RSASSA_PSS_SHA_256 \
             --message-type RAW \
             --message fileb://artifact.txt \
@@ -250,7 +273,7 @@ jobs:
       - name: Fetch public key and verify with OpenSSL
         run: |
           set -euo pipefail
-          aws kms get-public-key --key-id "${{ vars.AWS_KMS_KEY_ID }}" \
+          aws kms get-public-key --key-id "${AWS_KMS_KEY_ID}" \
             --query PublicKey --output text | base64 -d > aws-pub.der
           openssl pkey -pubin -inform DER -in aws-pub.der -out aws-pub.pem
           openssl pkeyutl -verify -pubin -inkey aws-pub.pem \
