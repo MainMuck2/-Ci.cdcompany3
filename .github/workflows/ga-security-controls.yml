@@ -34,7 +34,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
-
       - name: Compute base/head refs for dependency review
         id: deprefs
         shell: bash
@@ -62,7 +61,6 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
           echo "Using base=$BASE_SHA head=$HEAD_SHA"
-
       - uses: actions/dependency-review-action@595b5aeba73380359d98a5e087f648dbb0edce1b
         if: steps.deprefs.outputs.skip != 'true'
         with:
@@ -131,14 +129,26 @@ jobs:
           echo "hello $(date -u +%FT%TZ)" > artifact.txt
           sha256sum artifact.txt | tee checksums.txt
 
-      - name: Export SBOM (GitHub API or Syft)
+      - name: Export SBOM (prefer GitHub, fallback to Syft for artifact.txt)
         id: sbom
         run: |
           set -euo pipefail
-          gh api repos/${{ github.repository }}/dependency-graph/sbom -f ref=${{ github.sha }} \
-            | jq '.sbom | fromjson' > sbom.spdx.json || \
-          (curl -sSfL https://get.anchore.io/syft | sh -s -- -b /usr/local/bin && \
-           syft dir:. -o spdx-json=sbom.spdx.json)
+          GH_OK=0
+          if gh api "repos/${{ github.repository }}/dependency-graph/sbom" -f ref="${{ github.sha }}" \
+               -H "Accept: application/vnd.github+json" >/tmp/gh-sbom.json 2>/dev/null; then
+            if jq -e '.sbom' /tmp/gh-sbom.json >/dev/null 2>&1; then
+              jq '.sbom | fromjson' /tmp/gh-sbom.json > sbom.spdx.json || true
+              GH_OK=1
+            fi
+          fi
+          # Если GitHub SBOM пустой/без файла artifact.txt — генерируем syft для файла
+          if [ $GH_OK -ne 1 ] || ! jq -e '.files[]? | select(.fileName=="artifact.txt")' sbom.spdx.json >/dev/null 2>&1; then
+            echo "GitHub SBOM не содержит artifact.txt — генерируем SBOM Syft для файла"
+            curl -sSfL https://get.anchore.io/syft | sh -s -- -b /usr/local/bin
+            syft "file:artifact.txt" -o spdx-json=sbom.spdx.json
+          fi
+          # sanity
+          jq -e '.SPDXID and (.files // [])' sbom.spdx.json >/dev/null
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -216,16 +226,27 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Fetch GH App key from AWS Secrets Manager
+      - name: Fetch GH App key from AWS Secrets Manager (robust)
         id: fetch_appkey
         shell: bash
         run: |
           set -euo pipefail
           umask 077
-          aws secretsmanager get-secret-value \
-            --secret-id ci/github/app-private-key \
-            --query SecretString --output text > app.pem
-          test -s app.pem
+          RAW="$(aws secretsmanager get-secret-value --secret-id ci/github/app-private-key --query SecretString --output text)"
+          if printf '%s' "$RAW" | head -n1 | grep -q '-----BEGIN '; then
+            printf '%s' "$RAW" > app.pem
+          else
+            VAL="$(printf '%s' "$RAW" | jq -r '.value // empty' || true)"
+            if [ -n "${VAL:-}" ] && printf '%s' "$VAL" | head -n1 | grep -q '-----BEGIN '; then
+              printf '%s' "$VAL" > app.pem
+            else
+              echo "::error::Secret is not a PEM. Store raw PEM or JSON {\"value\":\"PEM\"}."
+              exit 1
+            fi
+          fi
+          # sanity: ключ читается OpenSSL'ом
+          openssl pkey -in app.pem -noout >/dev/null 2>&1 || { echo "::error::Invalid PEM in app.pem"; exit 1; }
+          echo "app.pem ready"
 
       - name: Get GitHub App installation token (no external action)
         id: app_token
@@ -282,18 +303,15 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
-
       - name: Download build artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: build
-
       - name: Configure AWS (OIDC)
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
-
       - name: KMS Sign artifact.txt (PS256)
         run: |
           set -euo pipefail
@@ -303,14 +321,12 @@ jobs:
             --message-type RAW \
             --message fileb://artifact.txt \
             --query Signature --output text | base64 -d > artifact.sig
-
       - name: Fetch public key and verify with OpenSSL (PSS)
         run: |
           set -euo pipefail
           aws kms get-public-key --key-id "${{ vars.AWS_KMS_KEY_ID }}" \
             --query PublicKey --output text | base64 -d > aws-pub.der
           openssl pkey -pubin -inform DER -in aws-pub.der -out aws-pub.pem
-          # Верификация PSS со строго заданными опциями
           openssl dgst -sha256 \
             -verify aws-pub.pem -signature artifact.sig \
             -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:digest -sigopt rsa_mgf1_md:sha256 \
@@ -329,12 +345,15 @@ jobs:
         run: |
           set -euo pipefail
           ART_DIGEST=$(sha256sum artifact.txt | awk '{print $1}')
-          SBOM_DIGEST=$(jq -r '
-            .artifacts? // .packages? // [] |
-            .[]? |
-            ( .checksums? // .externalRefs? // [] ) |
-            ( .[]? | select(.algorithm?=="SHA256" or .referenceType?=="checksum") | .checksumValue? // .referenceLocator? )' sbom.spdx.json \
-          | head -n1 || true)
+          SBOM_DIGEST=$(
+            jq -r '
+              .files[]? 
+              | select(.fileName=="artifact.txt") 
+              | .checksums[]? 
+              | select(.algorithm=="SHA256") 
+              | .checksumValue
+            ' sbom.spdx.json | head -n1
+          )
           if [ -z "$SBOM_DIGEST" ] || [ "$ART_DIGEST" != "$SBOM_DIGEST" ]; then
             echo "::warning::SBOM digest mismatch or missing (artifact=$ART_DIGEST, sbom=$SBOM_DIGEST)"
             [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
@@ -347,20 +366,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
-
       - name: Install trivy (reliable script)
         run: |
           set -euo pipefail
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
             | sh -s -- -b /usr/local/bin
           trivy --version
-
       - name: Run IaC/config scan (WARN)
         run: |
           set -euo pipefail
           trivy config --quiet --exit-code 0 --format table --no-progress . | tee iac_report.txt
           echo "IaC scan completed"
-
       - name: Upload IaC report
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
