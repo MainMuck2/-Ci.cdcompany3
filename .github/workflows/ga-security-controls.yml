@@ -16,6 +16,7 @@ permissions:
   attestations: write
 
 env:
+  # block на default branch, warn на остальных
   ENFORCEMENT: ${{ github.ref_name == github.event.repository.default_branch && 'block' || 'warn' }}
 
 jobs:
@@ -139,7 +140,7 @@ jobs:
           set -euo pipefail
           ART_DIGEST="$(sha256sum artifact.txt | awk '{print $1}')"
 
-          # Install syft (robust, no install.sh exit quirks)
+          # Install syft (robust)
           VER="v1.33.0"
           URL1="https://github.com/anchore/syft/releases/download/${VER}/syft_${VER#v}_linux_amd64.tar.gz"
           URL2="https://github.com/anchore/syft/releases/download/${VER}/syft_Linux_x86_64.tar.gz"
@@ -397,9 +398,6 @@ jobs:
           set -euo pipefail
           trivy config -q --exit-code 0 --format table .
           echo "IaC scan completed"
-      - name: Upload IaC report (optional placeholder)
-        if: always()
-        run: echo "No separate report file generated with -q table format."
 
   # ---------------- Promote to Production ----------------
   promote_to_prod:
