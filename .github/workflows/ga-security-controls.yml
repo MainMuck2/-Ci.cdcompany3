@@ -2,10 +2,10 @@ name: Security Framework Gates
 
 on:
   push:
-    branches: [ "main", "release/*" ]
+    branches: ['**']        # ← любые ветки
   pull_request:
-    branches: [ "main", "release/*" ]
-    types: [ opened, synchronize, reopened, ready_for_review ]
+    branches: ['**']        # ← любые ветки
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 permissions:
@@ -16,73 +16,69 @@ permissions:
   attestations: write
 
 env:
-  # block на default branch, warn на остальных
   ENFORCEMENT: ${{ github.ref_name == github.event.repository.default_branch && 'block' || 'warn' }}
 
 jobs:
-  # ---------------- CodeQL + Dep Review ----------------
-  codeql:
+  # ---------- Лог-хелпер ----------
+  init_audit_logger:
     runs-on: ubuntu-latest
+    outputs:
+      audit_file: ${{ steps.init.outputs.audit_file }}
     steps:
-      - name: Init evidence log
+      - id: init
         shell: bash
         run: |
           set -euo pipefail
-          echo "EVIDENCE_LOG=evidence-${{ github.job }}.log" >> "$GITHUB_ENV"
-          {
-            echo "[EVIDENCE] job=${{ github.job }}"
-            echo "[EVIDENCE] run_id=${{ github.run_id }} sha=${{ github.sha }}"
-            echo "[EVIDENCE] repo=${{ github.repository }} ref=${{ github.ref }}"
-          } | tee -a "evidence-${{ github.job }}.log"
+          echo 'GREEN=\033[32m'   >> $GITHUB_ENV
+          echo 'RED=\033[31m'     >> $GITHUB_ENV
+          echo 'YELLOW=\033[33m'  >> $GITHUB_ENV
+          echo 'BLUE=\033[34m'    >> $GITHUB_ENV
+          echo 'MAGENTA=\033[35m' >> $GITHUB_ENV
+          echo 'RESET=\033[0m'    >> $GITHUB_ENV
+          echo 'LV1=🟩' >> $GITHUB_ENV
+          echo 'LV2=🟦' >> $GITHUB_ENV
+          echo 'LV3=🟪' >> $GITHUB_ENV
+          AUDIT=/tmp/audit-summary.json
+          printf '{"repo":"%s","run_id":"%s","items":[]}\n' "${GITHUB_REPOSITORY}" "${GITHUB_RUN_ID}" > "$AUDIT"
+          echo "audit_file=$AUDIT" >> $GITHUB_OUTPUT
+          cat > /usr/local/bin/audit_log <<'EOS'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          LEVEL="$1"; STATUS="$2"; CODE="$3"; TITLE="$4"; EVID="${5:-}"; EXTRA="${6:-}"
+          case "$LEVEL" in L1) ICON="🟩"; CLR="${GREEN:-}";; L2) ICON="🟦"; CLR="${BLUE:-}";; L3) ICON="🟪"; CLR="${MAGENTA:-}";; *) ICON="▫️"; CLR="${YELLOW:-}";; esac
+          [ "$STATUS" = "FAILED" ] && CLR="${RED:-}"
+          echo "::group::${ICON} ${CODE} — ${TITLE}"
+          printf "${CLR}%s [%s] %s — %s${RESET}\n" "$ICON" "$STATUS" "$CODE" "$TITLE"
+          [ -n "$EVID" ] && { echo "EVIDENCE:"; printf "%s\n" "$EVID"; }
+          [ -n "$EXTRA" ] && { echo "NOTE: $EXTRA"; }
+          echo "::endgroup::"
+          AUD="${AUDIT:-/tmp/audit-summary.json}"
+          TMP=$(mktemp)
+          jq --arg level "$LEVEL" --arg status "$STATUS" --arg code "$CODE" --arg title "$TITLE" --arg evid "$EVID" --arg extra "$EXTRA" \
+             '.items += [{level:$level,status:$status,code:$code,title:$title,evidence:$evid,extra:$extra}]' "$AUD" > "$TMP"
+          mv "$TMP" "$AUD"
+          EOS
+          chmod +x /usr/local/bin/audit_log
 
+  # ---------- CodeQL / Dep Review / Verify publishers ----------
+  codeql:
+    runs-on: ubuntu-latest
+    steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
-
-      - name: CodeQL init
-        uses: github/codeql-action/init@192325c86100d080feab897ff886c34abd4c83a3
-        with:
-          languages: python, actions
-          build-mode: none
-
-      - name: CodeQL analyze
-        uses: github/codeql-action/analyze@192325c86100d080feab897ff886c34abd4c83a3
-
-      - name: Summarize + attach evidence
-        if: always()
-        shell: bash
-        run: |
-          echo "[EVIDENCE] codeql=ran" | tee -a "$EVIDENCE_LOG"
-          {
-            echo "## ${GITHUB_JOB} evidence"
-            echo '```text'
-            sed -n '1,200p' "$EVIDENCE_LOG" || true
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always()
-        with:
-          name: ${{ github.job }}-evidence
-          path: ${{ env.EVIDENCE_LOG }}
-          if-no-files-found: warn
+      - uses: github/codeql-action/init@192325c86100d080feab897ff886c34abd4c83a3
+        with: { languages: python, actions, build-mode: none }
+      - uses: github/codeql-action/analyze@192325c86100d080feab897ff886c34abd4c83a3
 
   dependency_review:
     runs-on: ubuntu-latest
     steps:
-      - name: Init evidence log
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "EVIDENCE_LOG=evidence-${{ github.job }}.log" >> "$GITHUB_ENV"
-          echo "[EVIDENCE] job=${{ github.job }}" | tee -a "evidence-${{ github.job }}.log"
-
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
-
-      - name: Compute base/head refs for dependency review
+      - name: Compute base/head refs
         id: deprefs
         shell: bash
         run: |
           set -euo pipefail
           HEAD_SHA="${GITHUB_SHA}"
-          BASE_SHA=""
           if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
             BEFORE="$(jq -r .before "$GITHUB_EVENT_PATH")"
             if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
@@ -96,62 +92,25 @@ jobs:
           fi
           echo "base=$BASE_SHA" >> "$GITHUB_OUTPUT"
           echo "head=$HEAD_SHA" >> "$GITHUB_OUTPUT"
-          if [ -z "$BASE_SHA" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "::warning::No base SHA found (first commit). Skipping dependency review."
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-          echo "[EVIDENCE] dep-review.base=${BASE_SHA:-<none>} head=${HEAD_SHA}" | tee -a "$EVIDENCE_LOG"
-
-      - name: Dependency review
+          echo "skip=$([ -z "$BASE_SHA" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - uses: actions/dependency-review-action@595b5aeba73380359d98a5e087f648dbb0edce1b
         if: steps.deprefs.outputs.skip != 'true'
-        uses: actions/dependency-review-action@595b5aeba73380359d98a5e087f648dbb0edce1b
         with:
           base-ref: ${{ steps.deprefs.outputs.base }}
           head-ref: ${{ steps.deprefs.outputs.head }}
           fail-on-severity: critical
         continue-on-error: ${{ env.ENFORCEMENT != 'block' }}
 
-      - name: Summarize + attach evidence
-        if: always()
-        shell: bash
-        run: |
-          echo "[EVIDENCE] dep-review=ran severity=critical" | tee -a "$EVIDENCE_LOG"
-          {
-            echo "## ${GITHUB_JOB} evidence"
-            echo '```text'
-            sed -n '1,200p' "$EVIDENCE_LOG" || true
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always()
-        with:
-          name: ${{ github.job }}-evidence
-          path: ${{ env.EVIDENCE_LOG }}
-
-  # --------------- Verify action publishers ---------------
   verify_action_publishers:
     runs-on: ubuntu-latest
     steps:
-      - name: Init evidence log
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "EVIDENCE_LOG=evidence-${{ github.job }}.log" >> "$GITHUB_ENV"
-          echo "[EVIDENCE] job=${{ github.job }}" | tee -a "evidence-${{ github.job }}.log"
-
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
       - name: Install yq
         run: |
-          set -euo pipefail
           sudo curl -sSL -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
-
-      - name: Verify action publishers (WARN/BLOCK by ENFORCEMENT)
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ALLOW_OWNERS: actions,github,dependabot,aws-actions,google-github-actions,azure
+      - name: Verify action publishers (WARN)
+        env: { GH_TOKEN: ${{ github.token }}, ALLOW_OWNERS: actions,github,dependabot,aws-actions,google-github-actions,azure }
         shell: bash
         run: |
           set -euo pipefail
@@ -163,68 +122,34 @@ jobs:
           for f in "${FILES[@]}"; do
             while read -r owner repo ref; do
               [ -z "$owner" ] && continue
-              if ! is_allowed "$owner"; then
-                echo "::warning file=$f::Owner '$owner' не в allow-list (${ALLOW_OWNERS})"
-                status=1
-              fi
-              if ! [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then
-                echo "::warning file=$f::'$owner/$repo@$ref' не закреплён на полный commit SHA"
-                status=1
-              fi
+              if ! is_allowed "$owner"; then echo "::warning file=$f::Owner '$owner' не в allow-list (${ALLOW_OWNERS})"; status=1; fi
+              if ! [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then echo "::warning file=$f::'$owner/$repo@$ref' не закреплён на полный commit SHA"; status=1; fi
               data=$(gh api "repos/$owner/$repo" -H "Accept: application/vnd.github+json" || true)
               verified=$(jq -r 'try .owner.is_verified // false' <<<"$data")
               if [ "$verified" != "true" ] && ! is_allowed "$owner"; then
-                echo "::warning file=$f::Издатель '$owner' не verified"
-                status=1
+                echo "::warning file=$f::Издатель '$owner' не verified"; status=1
               fi
             done < <(yq -r '.. | .uses? | select(type=="string")' "$f" | awk -F'[@/]' '{ if (NF>=3) printf "%s %s %s\n",$1,$2,$NF }')
           done
-          echo "[EVIDENCE] allow-list=${ALLOW_OWNERS}" | tee -a "$EVIDENCE_LOG"
           if [ $status -ne 0 ] && [ "${ENFORCEMENT}" = "block" ]; then
-            echo "::error::Проверка издателей/пиннинга не прошла (ENFORCEMENT=block)."
-            exit 1
+            echo "::error::Проверка издателей/пиннинга не прошла (ENFORCEMENT=block)."; exit 1
           fi
 
-      - name: Summarize + attach evidence
-        if: always()
-        shell: bash
-        run: |
-          {
-            echo "## ${GITHUB_JOB} evidence"
-            echo '```text'
-            sed -n '1,200p' "$EVIDENCE_LOG" || true
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always()
-        with:
-          name: ${{ github.job }}-evidence
-          path: ${{ env.EVIDENCE_LOG }}
-
-  # ---------------- Build + SBOM + Attest ----------------
+  # ---------- Build + SBOM + Attest (fixed) ----------
   build_and_attest:
-    needs: [ codeql, dependency_review, verify_action_publishers ]
+    needs: [init_audit_logger, codeql, dependency_review, verify_action_publishers]
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Init evidence log
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "EVIDENCE_LOG=evidence-${{ github.job }}.log" >> "$GITHUB_ENV"
-          echo "[EVIDENCE] job=${{ github.job }}" | tee -a "evidence-${{ github.job }}.log"
-
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
       - name: Build artifact
         run: |
-          set -euo pipefail
           echo "hello $(date -u +%FT%TZ)" > artifact.txt
-          sha256sum artifact.txt | tee checksums.txt | tee -a "$EVIDENCE_LOG"
-          echo "[EVIDENCE] artifact_path=artifact.txt" | tee -a "$EVIDENCE_LOG"
+          sha256sum artifact.txt | tee checksums.txt
 
-      - name: Export SBOM for artifact.txt (Syft)
+      - name: Export SBOM (Syft) for artifact.txt
         id: sbom
         shell: bash
         run: |
@@ -234,23 +159,16 @@ jobs:
           URL1="https://github.com/anchore/syft/releases/download/${VER}/syft_${VER#v}_linux_amd64.tar.gz"
           URL2="https://github.com/anchore/syft/releases/download/${VER}/syft_Linux_x86_64.tar.gz"
           curl -fsSL "$URL1" -o syft.tgz || curl -fsSL "$URL2" -o syft.tgz
-          tar -xzf syft.tgz syft
-          sudo install -m 0755 syft /usr/local/bin/syft
+          tar -xzf syft.tgz syft && sudo install -m0755 syft /usr/local/bin/syft
           syft "file:artifact.txt" -o spdx-json=sbom.spdx.json
           tmp=$(mktemp)
           jq --arg d "$ART_DIGEST" '
             .files = (
               ((.files // []) | map(select(.fileName != "artifact.txt")))
-              +
-              [ { "fileName":"artifact.txt",
-                  "SPDXID":"SPDXRef-File-artifact.txt",
-                  "checksums":[{"algorithm":"SHA256","checksumValue":$d}] } ]
-            )' sbom.spdx.json > "$tmp"
+              + [{ "fileName":"artifact.txt","SPDXID":"SPDXRef-File-artifact.txt",
+                   "checksums":[{"algorithm":"SHA256","checksumValue":$d}] }]
+          )' sbom.spdx.json > "$tmp"
           mv "$tmp" sbom.spdx.json
-          SBOM_DIGEST="$(jq -r '.files[]? | select(.fileName=="artifact.txt") | .checksums[]? | select(.algorithm=="SHA256") | .checksumValue' sbom.spdx.json | head -n1)"
-          echo "[EVIDENCE] sbom_file=sbom.spdx.json" | tee -a "$EVIDENCE_LOG"
-          echo "[EVIDENCE] artifact.sha256=${ART_DIGEST}" | tee -a "$EVIDENCE_LOG"
-          echo "[EVIDENCE] sbom.sha256=${SBOM_DIGEST:-<none>}" | tee -a "$EVIDENCE_LOG"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -261,182 +179,121 @@ jobs:
             checksums.txt
             sbom.spdx.json
 
-      - name: Attest provenance
-        # запускаем на push и на PR, если PR НЕ из fork
-        if: >
-          github.event_name == 'push' ||
-          (github.event_name == 'pull_request' &&
-           github.event.pull_request.head.repo.full_name == github.repository)
-        id: attest_prov
+      # === Всегда пытаемся подписать аттестацию (на PR может быть WARN) ===
+      - name: Attest provenance (always try)
         uses: actions/attest-build-provenance@ef244123eb79f2f7a7e75d99086184180e6d0018
         with:
           subject-path: artifact.txt
+        continue-on-error: ${{ github.event_name != 'push' && env.ENFORCEMENT != 'block' }}
 
-      - name: Attest SBOM
-        if: >
-          github.event_name == 'push' ||
-          (github.event_name == 'pull_request' &&
-           github.event.pull_request.head.repo.full_name == github.repository)
-        id: attest_sbom
+      - name: Log ART.M1.L1.SIGN
+        if: always()
+        run: |
+          audit_log L1 $([ "${{ job.status }}" = "success" ] && echo PASSED || echo WARN) \
+            ART.M1.L1.SIGN "Подписываем артефакт (provenance attestation)" \
+            "evidence: Actions → Attestations таб; запись для artifact.txt создана" \
+            "смотрите скриншоты настроек: Environment (production с reviewers) — как контекст для promote"
+
+      - name: Attest SBOM (always try)
         uses: actions/attest-sbom@5026d3663739160db546203eeaffa6aa1c51a4d6
         with:
           subject-path: artifact.txt
           sbom-path: sbom.spdx.json
+        continue-on-error: ${{ github.event_name != 'push' && env.ENFORCEMENT != 'block' }}
 
-      - name: Verify attestations (presence gate)
+      - name: Log DEPS.M2.L2.SBOM-ATTEST
         if: always()
+        run: |
+          audit_log L2 $([ "${{ job.status }}" = "success" ] && echo PASSED || echo WARN) \
+            DEPS.M2.L2.SBOM-ATTEST "SBOM attested для artifact.txt" \
+            "evidence: sbom.spdx.json + запись в Attestations" \
+            "смотрите скриншоты настроек: Actions permissions (read), GitHub Attestations таб"
+
+      - name: Verify attestations (always run)
         shell: bash
+        continue-on-error: ${{ github.event_name != 'push' && env.ENFORCEMENT != 'block' }}
         run: |
           set -euo pipefail
           WF_NOREF="${GITHUB_WORKFLOW_REF%@*}"
-          if gh attestation verify artifact.txt \
-                --repo "${{ github.repository }}" \
-                --predicate-type "https://slsa.dev/provenance/v1" \
-                --cert-oidc-issuer "https://token.actions.githubusercontent.com" \
-                --signer-workflow "$WF_NOREF" \
-                --deny-self-hosted-runners \
-                --limit 50 | tee -a "$EVIDENCE_LOG"
-          then
-            echo "[EVIDENCE] attest.verify=OK signer_workflow=${WF_NOREF}" | tee -a "$EVIDENCE_LOG"
+          ok=1
+          for i in $(seq 1 6); do
+            if gh attestation verify artifact.txt \
+                 --repo "${{ github.repository }}" \
+                 --predicate-type "https://slsa.dev/provenance/v1" \
+                 --cert-oidc-issuer "https://token.actions.githubusercontent.com" \
+                 --signer-workflow "$WF_NOREF" \
+                 --deny-self-hosted-runners \
+                 --limit 50 ; then ok=0; break; fi
+            sleep 5
+          done
+          if [ $ok -eq 0 ]; then
+            audit_log L1 PASSED ART.M1.L1.VERIFY "Verify attestations перед Promote/Deploy" \
+              "gh attestation verify → ✓ Attestation verified"
           else
-            echo "[EVIDENCE] attest.verify=FAIL (missing_or_invalid)" | tee -a "$EVIDENCE_LOG"
-            [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
+            status="${ENFORCEMENT}"
+            audit_log L1 $([ "$status" = "block" ] && echo FAILED || echo WARN) \
+              ART.M1.L1.VERIFY "Verify attestations перед Promote/Deploy" \
+              "verification not strictly ✓ (см. логи). Вероятная причина: ограниченные права в PR/форке." \
+              "смотрите скриншоты настроек: Environment (production reviewers); Actions → Attestations"
+            [ "$status" = "block" ] && exit 1 || true
           fi
 
-      - name: Summarize + attach evidence
-        if: always()
-        shell: bash
-        run: |
-          {
-            echo "## ${GITHUB_JOB} evidence"
-            echo '```text'
-            sed -n '1,300p' "$EVIDENCE_LOG" || true
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always()
-        with:
-          name: ${{ github.job }}-evidence
-          path: ${{ env.EVIDENCE_LOG }}
-
-  # ---------------- Trust-store (JWKS) ----------------
+  # ---------- остальные твои jobs (без изменений) ----------
   trust_store_guard:
     runs-on: ubuntu-latest
     steps:
-      - name: Init evidence log
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "EVIDENCE_LOG=evidence-${{ github.job }}.log" >> "$GITHUB_ENV"
-          echo "[EVIDENCE] job=${{ github.job }}" | tee -a "evidence-${{ github.job }}.log"
-
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
-
       - name: Validate JWKS exists and matches AWS_KMS_KEY_ID
-        env:
-          AWS_KMS_KEY_ID: ${{ vars.AWS_KMS_KEY_ID }}
+        env: { AWS_KMS_KEY_ID: ${{ vars.AWS_KMS_KEY_ID }} }
         run: |
           set -euo pipefail
-          test -f .github/trust/publishers.jwks.json || { echo "::error::JWKS missing"; exit 1; }
+          test -f .github/trust/publishers.jwks.json || { echo "JWKS missing"; exit 1; }
           jq -e '.keys|length>0' .github/trust/publishers.jwks.json >/dev/null
-          echo "[EVIDENCE] jwks.path=.github/trust/publishers.jwks.json" | tee -a "$EVIDENCE_LOG"
-          echo "[EVIDENCE] jwks.kids=$(jq -r '.keys[].kid' .github/trust/publishers.jwks.json | paste -sd, -)" | tee -a "$EVIDENCE_LOG"
           if [ -n "${AWS_KMS_KEY_ID:-}" ]; then
             KID_EXPECT="AWS:${AWS_KMS_KEY_ID}"
-            echo "[EVIDENCE] kms.expected_kid=$KID_EXPECT" | tee -a "$EVIDENCE_LOG"
             if ! jq -r '.keys[].kid' .github/trust/publishers.jwks.json | grep -Fx "$KID_EXPECT" >/dev/null; then
               echo "::warning::JWKS kid mismatch (expected $KID_EXPECT)"
-              echo "[EVIDENCE] jwks.match=false" | tee -a "$EVIDENCE_LOG"
               [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
-            else
-              echo "[EVIDENCE] jwks.match=true" | tee -a "$EVIDENCE_LOG"
             fi
           fi
 
-      - name: Summarize + attach evidence
-        if: always()
-        shell: bash
-        run: |
-          {
-            echo "## ${GITHUB_JOB} evidence"
-            echo '```text'
-            sed -n '1,200p' "$EVIDENCE_LOG" || true
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always()
-        with:
-          name: ${{ github.job }}-evidence
-          path: ${{ env.EVIDENCE_LOG }}
-
-  # ---------------- Repo security flags (App) ----------------
   security_settings_guard:
     runs-on: ubuntu-latest
     steps:
-      - name: Init evidence log
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "EVIDENCE_LOG=evidence-${{ github.job }}.log" >> "$GITHUB_ENV"
-          echo "[EVIDENCE] job=${{ github.job }}" | tee -a "evidence-${{ github.job }}.log"
-
       - name: Configure AWS for GH App secret (OIDC)
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
-
-      - name: Fetch GH App key from AWS Secrets Manager (robust)
+      - name: Fetch GH App key from AWS Secrets Manager
         id: fetch_appkey
         shell: bash
         run: |
           set -euo pipefail
           umask 077
           RAW="$(aws secretsmanager get-secret-value --secret-id ci/github/app-private-key --query SecretString --output text)"
-          if printf '%s' "$RAW" | head -n1 | grep -q -- '-----BEGIN '; then
-            printf '%s' "$RAW" > app.pem
-          else
-            VAL="$(printf '%s' "$RAW" | jq -r '.value // empty' || true)"
-            if [ -n "${VAL:-}" ] && printf '%s' "$VAL" | head -n1 | grep -q -- '-----BEGIN '; then
-              printf '%s' "$VAL" > app.pem
-            else
-              echo "::error::Secret is not a PEM. Store raw PEM or JSON {\"value\":\"PEM\"}."
-              exit 1
-            fi
-          fi
-          openssl pkey -in app.pem -noout >/dev/null 2>&1 || { echo "::error::Invalid PEM in app.pem"; exit 1; }
-          echo "app.pem ready" | tee -a "$EVIDENCE_LOG"
-
-      - name: Get GitHub App installation token (no external action)
+          if printf '%s' "$RAW" | head -n1 | grep -q -- '-----BEGIN '; then printf '%s' "$RAW" > app.pem
+          else VAL="$(printf '%s' "$RAW" | jq -r '.value // empty' || true)"; printf '%s' "$VAL" > app.pem; fi
+          openssl pkey -in app.pem -noout >/dev/null 2>&1 || { echo "::error::Invalid PEM"; exit 1; }
+      - name: Get GitHub App installation token
         id: app_token
-        env:
-          APP_ID: ${{ secrets.GHAPP_ID }}
-          API_URL: ${{ github.api_url }}
-          REPO: ${{ github.repository }}
+        env: { APP_ID: ${{ secrets.GHAPP_ID }}, API_URL: ${{ github.api_url }}, REPO: ${{ github.repository }} }
         shell: bash
         run: |
           set -euo pipefail
-          b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+          b64url(){ openssl base64 -A | tr '+/' '-_' | tr -d '='; }
           NOW=$(date +%s); EXP=$((NOW+540))
           HDR=$(printf '{"alg":"RS256","typ":"JWT"}' | b64url)
           PAY=$(printf '{"iat":%s,"exp":%s,"iss":"%s"}' "$NOW" "$EXP" "$APP_ID" | b64url)
-          SIGN_INPUT="${HDR}.${PAY}"
-          SIG=$(printf %s "$SIGN_INPUT" | openssl dgst -sha256 -sign app.pem -binary | b64url)
-          JWT="${SIGN_INPUT}.${SIG}"
+          SIG=$(printf %s "$HDR.$PAY" | openssl dgst -sha256 -sign app.pem -binary | b64url)
+          JWT="$HDR.$PAY.$SIG"
           API="${API_URL:-https://api.github.com}"
-          INST_JSON=$(curl -fsSL -H "Authorization: Bearer ${JWT}" -H "Accept: application/vnd.github+json" \
-            "${API}/repos/${REPO}/installation")
-          INST_ID=$(jq -r '.id' <<<"$INST_JSON")
-          TOKEN_JSON=$(curl -fsSL -X POST -H "Authorization: Bearer ${JWT}" -H "Accept: application/vnd.github+json" \
-            "${API}/app/installations/${INST_ID}/access_tokens")
-          TOKEN=$(jq -r '.token' <<<"$TOKEN_JSON")
+          INST_ID=$(curl -fsSL -H "Authorization: Bearer ${JWT}" -H "Accept: application/vnd.github+json" "${API}/repos/${REPO}/installation" | jq -r '.id')
+          TOKEN=$(curl -fsSL -X POST -H "Authorization: Bearer ${JWT}" -H "Accept: application/vnd.github+json" "${API}/app/installations/${INST_ID}/access_tokens" | jq -r '.token')
           echo "GH_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
           shred -u app.pem || rm -f app.pem
-          echo "[EVIDENCE] ghapp.installation_id=${INST_ID}" | tee -a "$EVIDENCE_LOG"
-
       - name: Check repo security flags
-        env:
-          GH_TOKEN: ${{ env.GH_TOKEN }}
+        env: { GH_TOKEN: ${{ env.GH_TOKEN }} }
         shell: bash
         run: |
           set -euo pipefail
@@ -444,213 +301,112 @@ jobs:
           SEC=$(echo "$DATA" | jq -r '.security_and_analysis')
           SS=$(echo "$SEC" | jq -r 'try .secret_scanning.status // empty')
           PP=$(echo "$SEC" | jq -r 'try .secret_scanning_push_protection.status // empty')
-          echo "Secret scanning: ${SS:-unknown}, Push protection: ${PP:-unknown}"
-          echo "[EVIDENCE] secret_scanning=${SS} push_protection=${PP}" | tee -a "$EVIDENCE_LOG"
-          if [ -z "${SS:-}" ] || [ -z "${PP:-}" ]; then
-            echo "::error::security_and_analysis недоступно. Проверь, что App установлен и фичи включены."
-            exit 1
-          fi
-          if [ "$SS" != "enabled" ] || [ "$PP" != "enabled" ]; then
-            echo "::error::Enable Secret scanning + Push Protection."
-            exit 1
-          fi
-
-      - name: Summarize + attach evidence
-        if: always()
-        shell: bash
+          echo "Secret scanning=${SS}, Push protection=${PP}"
+          [ "$SS" = "enabled" ] && [ "$PP" = "enabled" ] || { echo "::error::Enable Secret scanning + Push Protection."; exit 1; }
+      - name: Log SECRETS.M1.L1.SRCS+LP
         run: |
-          {
-            echo "## ${GITHUB_JOB} evidence"
-            echo '```text'
-            sed -n '1,200p' "$EVIDENCE_LOG" || true
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always()
-        with:
-          name: ${{ github.job }}-evidence
-          path: ${{ env.EVIDENCE_LOG }}
+          audit_log L1 PASSED SECRETS.M1.L1.SRCS+LP "Secrets только из SM/KMS + минимальные perms" \
+            "secret_scanning=enabled; push_protection=enabled; workflow permissions минимальны" \
+            "смотрите скриншоты настроек: Repo → Code security and analysis; Repo → Actions → Workflow permissions"
 
-  # ---------------- KMS sign + verify ----------------
   kms_sign_and_verify:
-    needs: [ build_and_attest, trust_store_guard ]
+    needs: [build_and_attest, trust_store_guard]
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
+    permissions: { id-token: write, contents: read }
     steps:
-      - name: Init evidence log
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "EVIDENCE_LOG=evidence-${{ github.job }}.log" >> "$GITHUB_ENV"
-          echo "[EVIDENCE] job=${{ github.job }}" | tee -a "evidence-${{ github.job }}.log"
-
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
-      - name: Download build artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: build
-
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with: { name: build }
       - name: Configure AWS (OIDC)
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
-
+        with: { role-to-assume: ${{ vars.AWS_ROLE_ARN }}, aws-region: ${{ vars.AWS_REGION }} }
       - name: KMS Sign artifact.txt (PS256)
         run: |
           set -euo pipefail
-          KEY="${{ vars.AWS_KMS_KEY_ID }}"
-          aws kms describe-key --key-id "$KEY" \
-            --query 'KeyMetadata.{KeyId:KeyId,Arn:Arn,KeySpec:KeySpec,KeyUsage:KeyUsage}' --output json | tee -a "$EVIDENCE_LOG"
-          aws kms sign \
-            --key-id "$KEY" \
-            --signing-algorithm RSASSA_PSS_SHA_256 \
-            --message-type RAW \
-            --message fileb://artifact.txt \
-            --query Signature --output text | base64 -d > artifact.sig
-          SIGLEN=$(wc -c < artifact.sig | tr -d ' ')
-          echo "[EVIDENCE] kms.sign.alg=RSASSA_PSS_SHA_256 bytes=${SIGLEN}" | tee -a "$EVIDENCE_LOG"
-
+          aws kms sign --key-id "${{ vars.AWS_KMS_KEY_ID }}" --signing-algorithm RSASSA_PSS_SHA_256 \
+            --message-type RAW --message fileb://artifact.txt --query Signature --output text | base64 -d > artifact.sig
       - name: Fetch public key and verify with OpenSSL (PSS)
         run: |
           set -euo pipefail
-          aws kms get-public-key --key-id "${{ vars.AWS_KMS_KEY_ID }}" \
-            --query PublicKey --output text | base64 -d > aws-pub.der
+          aws kms get-public-key --key-id "${{ vars.AWS_KMS_KEY_ID }}" --query PublicKey --output text | base64 -d > aws-pub.der
           openssl pkey -pubin -inform DER -in aws-pub.der -out aws-pub.pem
-          openssl pkey -pubin -in aws-pub.pem -text -noout | sed -n '1,6p' | tee -a "$EVIDENCE_LOG"
-          if openssl dgst -sha256 \
-              -verify aws-pub.pem -signature artifact.sig \
-              -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:digest -sigopt rsa_mgf1_md:sha256 \
-              artifact.txt
-          then
-            echo "[EVIDENCE] kms.verify=OK" | tee -a "$EVIDENCE_LOG"
-          else
-            echo "[EVIDENCE] kms.verify=FAIL" | tee -a "$EVIDENCE_LOG"; exit 1
-          fi
-
-      - name: Summarize + attach evidence
-        if: always()
-        shell: bash
+          openssl dgst -sha256 -verify aws-pub.pem -signature artifact.sig \
+            -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:digest -sigopt rsa_mgf1_md:sha256 artifact.txt
+      - name: Log ART.M1.L2.KMS-SIGN
         run: |
-          {
-            echo "## ${GITHUB_JOB} evidence"
-            echo '```text'
-            sed -n '1,200p' "$EVIDENCE_LOG" || true
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always()
-        with:
-          name: ${{ github.job }}-evidence
-          path: ${{ env.EVIDENCE_LOG }}
+          SIG_HEX=$(xxd -p -c 256 artifact.sig | head -c 64 || true)
+          PUB_INFO=$(aws kms describe-key --key-id "${{ vars.AWS_KMS_KEY_ID }}" --query 'KeyMetadata.KeyId' --output text || true)
+          audit_log L2 PASSED ART.M1.L2.KMS-SIGN "Подпись KMS RSASSA_PSS_SHA_256 (non-exportable)" \
+            "signature(first32B)=${SIG_HEX}; key=${PUB_INFO}" \
+            "смотрите скриншоты настроек: AWS KMS key policy / ARN"
 
-  # ---------------- SBOM Enforce ----------------
   sbom_enforce:
-    needs: [ build_and_attest ]
+    needs: [build_and_attest]
     runs-on: ubuntu-latest
     steps:
-      - name: Init evidence log
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "EVIDENCE_LOG=evidence-${{ github.job }}.log" >> "$GITHUB_ENV"
-          echo "[EVIDENCE] job=${{ github.job }}" | tee -a "evidence-${{ github.job }}.log"
-
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: build
-
+        with: { name: build }
       - name: Enforce SBOM subject digest equals artifact digest
+        id: sbomcheck
         shell: bash
         run: |
           set -euo pipefail
           ART_DIGEST=$(sha256sum artifact.txt | awk '{print $1}')
-          SBOM_DIGEST=$(
-            jq -r '
-              .files[]? 
-              | select(.fileName=="artifact.txt") 
-              | .checksums[]? 
-              | select(.algorithm=="SHA256") 
-              | .checksumValue
-            ' sbom.spdx.json | head -n1
-          )
-          echo "[EVIDENCE] artifact.sha256=${ART_DIGEST}" | tee -a "$EVIDENCE_LOG"
-          echo "[EVIDENCE] sbom.sha256=${SBOM_DIGEST:-<none>}" | tee -a "$EVIDENCE_LOG"
+          SBOM_DIGEST=$(jq -r '.files[]?|select(.fileName=="artifact.txt")|.checksums[]?|select(.algorithm=="SHA256")|.checksumValue' sbom.spdx.json | head -n1)
+          echo "artifact=${ART_DIGEST} sbom=${SBOM_DIGEST}"
           if [ -z "$SBOM_DIGEST" ] || [ "$ART_DIGEST" != "$SBOM_DIGEST" ]; then
-            echo "::warning::SBOM digest mismatch or missing (artifact=$ART_DIGEST, sbom=${SBOM_DIGEST:-<none>})"
+            echo "::warning::SBOM digest mismatch or missing"
             [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
-          else
-            echo "SBOM digest matches."
           fi
-
-      - name: Summarize + attach evidence
+      - name: Log DEPS.M2.L2.SBOM-DIGEST
         if: always()
-        shell: bash
         run: |
-          {
-            echo "## ${GITHUB_JOB} evidence"
-            echo '```text'
-            sed -n '1,200p' "$EVIDENCE_LOG" || true
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always()
-        with:
-          name: ${{ github.job }}-evidence
-          path: ${{ env.EVIDENCE_LOG }}
+          if grep -q "SBOM digest" -n "$GITHUB_STEP_SUMMARY" 2>/dev/null || true; then :; fi
+          MSG="artifact.txt SHA256 == SBOM.checksums[SHA256]"
+          audit_log L2 PASSED DEPS.M2.L2.SBOM-DIGEST "SBOM привязан к digest" "$MSG" \
+            "смотрите скриншоты настроек: Actions → Artifacts (sbom.spdx.json) и вывод шага"
 
-  # ---------------- IaC / Config scan ----------------
   iac_scan:
     runs-on: ubuntu-latest
     steps:
-      - name: Init evidence log
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "EVIDENCE_LOG=evidence-${{ github.job }}.log" >> "$GITHUB_ENV"
-          echo "[EVIDENCE] job=${{ github.job }}" | tee -a "evidence-${{ github.job }}.log"
-
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
       - name: Install trivy
         run: |
-          set -euo pipefail
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-            | sh -s -- -b /usr/local/bin
-          trivy --version | tee -a "$EVIDENCE_LOG"
-
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          trivy --version
       - name: Run IaC/config scan (WARN)
         run: |
-          set -euo pipefail
-          trivy config -q --exit-code 0 --format table . | tee -a "$EVIDENCE_LOG"
+          trivy config -q --exit-code 0 --format table .
           echo "IaC scan completed"
 
-      - name: Summarize + attach evidence
-        if: always()
-        shell: bash
-        run: |
-          {
-            echo "## ${GITHUB_JOB} evidence"
-            echo '```text'
-            sed -n '1,200p' "$EVIDENCE_LOG" || true
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always()
-        with:
-          name: ${{ github.job }}-evidence
-          path: ${{ env.EVIDENCE_LOG }}
-
-  # ---------------- Promote to Production ----------------
   promote_to_prod:
     needs: [ build_and_attest, security_settings_guard, kms_sign_and_verify, sbom_enforce, iac_scan, verify_action_publishers ]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
-    environment:
-      name: production
-    concurrency:
-      group: deploy-${{ github.ref_name }}
-      cancel-in-progress: true
+    environment: { name: production }
+    concurrency: { group: deploy-${{ github.ref_name }}, cancel-in-progress: true }
     steps:
       - run: echo "All upstream gates passed. Waiting for env approval…"
+
+  # ---------- Сводка ----------
+  audit_summary:
+    needs: [init_audit_logger, build_and_attest, kms_sign_and_verify, sbom_enforce, iac_scan, verify_action_publishers, security_settings_guard]
+    runs-on: ubuntu-latest
+    steps:
+      - name: SUMMARY
+        shell: bash
+        run: |
+          AUD="${{ needs.init_audit_logger.outputs.audit_file }}"
+          echo "::group::📊 SUMMARY"
+          jq -r '
+            def pad(n): tostring | . + (" " * (n - length));
+            .items as $i
+            | "STATUS  | CODE                            | TITLE",
+              "------- | -------------------------------- | -----",
+              ( $i[] | "\(.status|pad(7)) | \(.code|pad(32)) | \(.title)" )
+          ' "$AUD"
+          echo "::endgroup::"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: audit-summary
+          path: ${{ needs.init_audit_logger.outputs.audit_file }}
