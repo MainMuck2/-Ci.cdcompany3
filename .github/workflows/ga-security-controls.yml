@@ -410,7 +410,7 @@ jobs:
   # ---------------- Promote to Production ----------------
   promote_to_prod:
     needs: [ build_and_attest, security_settings_guard, kms_sign_and_verify, sbom_enforce, iac_scan, verify_action_publishers ]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: ${{ (github.ref_name == 'main' || startsWith(github.ref_name, 'release/')) && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     environment:
       name: production
