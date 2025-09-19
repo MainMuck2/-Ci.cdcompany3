@@ -2,7 +2,7 @@ name: Security Framework Gates
 
 on:
   push:
-    branches: [ "main", "release/*" ]
+    branches: [ "main", "release/*", "fix/*" ]
   pull_request:
     branches: [ "main", "release/*" ]
     types: [ opened, synchronize, reopened, ready_for_review ]
