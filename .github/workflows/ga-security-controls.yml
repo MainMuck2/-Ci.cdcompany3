@@ -18,6 +18,8 @@ permissions:
 env:
   # block на default branch, warn на остальных
   ENFORCEMENT: ${{ github.ref_name == github.event.repository.default_branch && 'block' || 'warn' }}
+  # Аттестируем на push / workflow_dispatch / PR из этой же репы (НЕ из форков)
+  CAN_ATTEST: ${{ (github.event_name == 'push') || (github.event_name == 'workflow_dispatch') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
 
 jobs:
   # ---------------- CodeQL + Dep Review ----------------
@@ -116,6 +118,7 @@ jobs:
             echo "::error::Проверка издателей/пиннинга не прошла (ENFORCEMENT=block)."
             exit 1
           fi
+
   # ---------------- Build + SBOM + Attest ----------------
   build_and_attest:
     needs: [ codeql, dependency_review, verify_action_publishers ]
@@ -129,13 +132,13 @@ jobs:
         run: |
           echo "hello $(date -u +%FT%TZ)" > artifact.txt
           sha256sum artifact.txt | tee checksums.txt
+
       - name: Export SBOM for artifact.txt (Syft)
         id: sbom
         shell: bash
         run: |
           set -euo pipefail
           ART_DIGEST="$(sha256sum artifact.txt | awk '{print $1}')"
-          # Install syft (robust)
           VER="v1.33.0"
           URL1="https://github.com/anchore/syft/releases/download/${VER}/syft_${VER#v}_linux_amd64.tar.gz"
           URL2="https://github.com/anchore/syft/releases/download/${VER}/syft_Linux_x86_64.tar.gz"
@@ -143,9 +146,7 @@ jobs:
           tar -xzf syft.tgz syft
           sudo install -m 0755 syft /usr/local/bin/syft
           syft version
-          # Generate SBOM for the exact file
           syft "file:artifact.txt" -o spdx-json=sbom.spdx.json
-          # Ensure checksum for artifact.txt equals actual digest
           tmp=$(mktemp)
           jq --arg d "$ART_DIGEST" '
             .files = (
@@ -157,8 +158,8 @@ jobs:
             )
           ' sbom.spdx.json > "$tmp"
           mv "$tmp" sbom.spdx.json
-          # Sanity
           jq -e '.files[] | select(.fileName=="artifact.txt") | .checksums[] | select(.algorithm=="SHA256")' sbom.spdx.json >/dev/null
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -167,42 +168,62 @@ jobs:
             artifact.txt
             checksums.txt
             sbom.spdx.json
+
       - name: Attest provenance
-        if: github.event_name == 'push'
+        if: env.CAN_ATTEST == 'true'
         uses: actions/attest-build-provenance@ef244123eb79f2f7a7e75d99086184180e6d0018
         with:
           subject-path: artifact.txt
 
       - name: Attest SBOM
-        if: github.event_name == 'push'
+        if: env.CAN_ATTEST == 'true'
         uses: actions/attest-sbom@5026d3663739160db546203eeaffa6aa1c51a4d6
         with:
           subject-path: artifact.txt
           sbom-path: sbom.spdx.json
 
-      - name: Verify attestations
-        if: github.event_name == 'push'
+      - name: Ensure gh has attestation command
+        if: env.CAN_ATTEST == 'true'
+        env:
+          GH_TOKEN: ${{ env.GH_TOKEN }}
         run: |
           set -euo pipefail
-          WF_NOREF="${GITHUB_WORKFLOW_REF%@*}"
-          for i in $(seq 1 6); do
-            if gh attestation verify artifact.txt \
-                  --repo "${{ github.repository }}" \
-                  --predicate-type "https://slsa.dev/provenance/v1" \
-                  --cert-oidc-issuer "https://token.actions.githubusercontent.com" \
-                  --signer-workflow "$WF_NOREF" \
-                  --deny-self-hosted-runners \
-                  --limit 50 ; then
-              echo "✓ Attestation verified"
-              exit 0
-            fi
-            sleep 10
-          done
-          if [ "${ENFORCEMENT}" = "block" ]; then
-            exit 1
-          else
-            echo "::warning::Attestation verification failed"
+          if ! gh attestation --help >/dev/null 2>&1; then
+            gh extension install github/gh-attestation
           fi
+          gh --version
+
+      - name: Verify attestations (SLSA + SBOM)
+        if: env.CAN_ATTEST == 'true'
+        env:
+          GH_TOKEN: ${{ env.GH_TOKEN }}
+        run: |
+          set -euo pipefail
+          WF_REF="${GITHUB_WORKFLOW_REF}" # полный ref с @refs/...
+          echo "Verifying signer-workflow=${WF_REF}"
+          for predicate in "https://slsa.dev/provenance/v1" "https://spdx.dev/Document"; do
+            echo "Trying predicate: ${predicate}"
+            ok=0
+            for i in $(seq 1 8); do
+              if gh attestation verify artifact.txt \
+                    --repo "${{ github.repository }}" \
+                    --predicate-type "${predicate}" \
+                    --cert-oidc-issuer "https://token.actions.githubusercontent.com" \
+                    --signer-workflow "${WF_REF}" \
+                    --deny-self-hosted-runners \
+                    --limit 50 ; then
+                echo "✓ Verified ${predicate}"
+                ok=1
+                break
+              fi
+              sleep 10
+            done
+            if [ $ok -eq 0 ]; then
+              echo "::warning::Verification failed for ${predicate}"
+              [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
+            fi
+          done
+
   # ---------------- Trust-store (JWKS) ----------------
   trust_store_guard:
     runs-on: ubuntu-latest
@@ -222,6 +243,7 @@ jobs:
               [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
             fi
           fi
+
   # ---------------- Repo security flags (App) ----------------
   security_settings_guard:
     runs-on: ubuntu-latest
@@ -252,6 +274,7 @@ jobs:
           fi
           openssl pkey -in app.pem -noout >/dev/null 2>&1 || { echo "::error::Invalid PEM in app.pem"; exit 1; }
           echo "app.pem ready"
+
       - name: Get GitHub App installation token (no external action)
         id: app_token
         env:
@@ -277,6 +300,7 @@ jobs:
           TOKEN=$(jq -r '.token' <<<"$TOKEN_JSON")
           echo "GH_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
           shred -u app.pem || rm -f app.pem
+
       - name: Check repo security flags
         env:
           GH_TOKEN: ${{ env.GH_TOKEN }}
@@ -296,6 +320,7 @@ jobs:
             echo "::error::Enable Secret scanning + Push Protection."
             exit 1
           fi
+
   # ---------------- KMS sign + verify ----------------
   kms_sign_and_verify:
     needs: [ build_and_attest, trust_store_guard ]
@@ -335,6 +360,7 @@ jobs:
             -verify aws-pub.pem -signature artifact.sig \
             -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:digest -sigopt rsa_mgf1_md:sha256 \
             artifact.txt
+
   # ---------------- SBOM Enforce ----------------
   sbom_enforce:
     needs: [ build_and_attest ]
@@ -343,7 +369,6 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: build
-
       - name: Enforce SBOM subject digest equals artifact digest
         shell: bash
         run: |
@@ -364,6 +389,7 @@ jobs:
           else
             echo "SBOM digest matches."
           fi
+
   # ---------------- IaC / Config scan ----------------
   iac_scan:
     runs-on: ubuntu-latest
@@ -380,6 +406,7 @@ jobs:
           set -euo pipefail
           trivy config -q --exit-code 0 --format table .
           echo "IaC scan completed"
+
   # ---------------- Promote to Production ----------------
   promote_to_prod:
     needs: [ build_and_attest, security_settings_guard, kms_sign_and_verify, sbom_enforce, iac_scan, verify_action_publishers ]
