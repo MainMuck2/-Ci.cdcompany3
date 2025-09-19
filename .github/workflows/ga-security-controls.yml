@@ -2,7 +2,7 @@ name: Security Framework Gates
 
 on:
   push:
-    branches: [ "main", "release/*", "fix/*" ]
+    branches: [ "main", "release/*"]
   pull_request:
     branches: [ "main", "release/*" ]
     types: [ opened, synchronize, reopened, ready_for_review ]
@@ -410,8 +410,12 @@ jobs:
   # ---------------- Promote to Production ----------------
   promote_to_prod:
     needs: [ build_and_attest, security_settings_guard, kms_sign_and_verify, sbom_enforce, iac_scan, verify_action_publishers ]
-    if: ${{ (github.ref_name == 'main' || startsWith(github.ref_name, 'release/') || github.ref_name == 'fix/signed-commit') && github.event_name == 'push' }}
-    runs-on: ubuntu-latest
+if: >
+    (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+    (github.ref == 'refs/heads/main' ||
+     startsWith(github.ref, 'refs/heads/release/') ||
+     github.ref == 'refs/heads/fix/signed-commit')
+         runs-on: ubuntu-latest
     environment:
       name: production
     concurrency:
