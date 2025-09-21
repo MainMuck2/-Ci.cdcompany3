@@ -298,8 +298,10 @@ jobs:
             echo "::warning::ACCESS_CERT_OK!=true"; [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
           fi
           if [ -n "${EXP:-}" ]; then
-            now=$(date -u +%s); exp=$(date -u -d "${EXP}" +%s 2>/dev/null || echo 0)
-            [ $exp -ge $now ] || { echo "::warning::access recert expired"; [ "${ENFORCEMENT}" = "block" ] && exit 1 || true; }
+            now=$(date -u +%s)
+            exp=$(date -u -d "${EXP}" +%s 2>/dev/null || echo 0)
+            [ "$exp" -ge "$now" ] || { echo "::warning::access recert expired"; [ "${ENFORCEMENT}" = "block" ] && exit 1 || true; }
+          fi
 
   # ---------------- Org security flags (App) ----------------
   security_settings_guard:
