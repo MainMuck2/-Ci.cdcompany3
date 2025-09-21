@@ -307,6 +307,7 @@ jobs:
 
   # ---------------- Secrets presence gate (source + workflows + artifacts) ----------------
   secrets_presence_gate:
+    needs: [build_and_attest]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
@@ -315,12 +316,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # базовые сигнатуры (AWS, GitHub, Slack, generic tokens, приватные ключи и т.д.)
           PATTERN='AKIA|ASIA|ghp_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{82,}|xox[abrs]-|BEGIN (RSA |OPENSSH )?PRIVATE KEY|SECRET_ACCESS_KEY|token=|password='
           found=0
-          grep -RInE "$PATTERN" -- . ':!**/.git/**' ':!.github/workflows/*.y*ml~' || true
+          grep -RInE "$PATTERN" -- . ':!**/.git/**' || true
           [ ${PIPESTATUS[0]} -eq 0 ] && found=1
-          # отдельно прогон по workflow-файлам
           grep -RInE "$PATTERN" -- .github/workflows ':!**/.git/**' || true
           [ ${PIPESTATUS[0]} -eq 0 ] && found=1
           if [ $found -eq 1 ]; then
@@ -330,25 +329,29 @@ jobs:
             echo "no secrets detected in repo/workflows (heuristic)"
           fi
 
-      - name: Try download build artifact (optional)
+      - name: Download all build artifacts (optional)
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: build
-          path: _scan
+          path: _scan/artifacts
+          merge-multiple: true
         continue-on-error: true
 
       - name: Scan artifacts for secrets (if present)
-        if: hashFiles('_scan/**') != ''
+        if: hashFiles('_scan/artifacts/**') != ''
         shell: bash
         run: |
           set -euo pipefail
           PATTERN='AKIA|ASIA|ghp_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{82,}|xox[abrs]-|BEGIN (RSA |OPENSSH )?PRIVATE KEY|SECRET_ACCESS_KEY|token=|password='
-          if grep -RInE "$PATTERN" -- _scan ':!**/.git/**' ; then
+          if grep -RInE "$PATTERN" -- _scan/artifacts ':!**/.git/**' ; then
             echo "::warning::possible secrets found in build artifacts"
             [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
           else
             echo "no secrets detected in artifacts (heuristic)"
           fi
+
+      - name: No artifacts to scan (warn)
+        if: hashFiles('_scan/artifacts/**') == ''
+        run: echo "::warning::no build artifacts to scan (skipping)"
 
   # ---------------- Permissions gate ----------------
   permissions_gate:
