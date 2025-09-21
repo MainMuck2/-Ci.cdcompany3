@@ -144,21 +144,36 @@ jobs:
           GH_TOKEN: ${{ env.GH_TOKEN }}
         run: |
           set -euo pipefail
-          if ! gh attestation --help >/dev/null 2>&1; then gh extension install github/gh-attestation; fi
+          if ! gh attestation --help >/dev/null 2>&1; then
+            gh extension install github/gh-attestation
+          fi
+
           WF="${GITHUB_WORKFLOW_REF}"
+          REPO="${GITHUB_REPOSITORY}"
+          echo "Verifying signer-workflow=${WF}"
+
+          ok=0
           for PT in "https://slsa.dev/provenance/v1" "https://spdx.dev/Document"; do
-            ok=0
+            echo "Trying predicate: ${PT}"
             for i in $(seq 1 8); do
-              gh attestation verify artifact.txt \
-                --repo "${{ github.repository }}" \
-                --predicate-type "$PT" \
-                --cert-oidc-issuer "https://token.actions.githubusercontent.com" \
-                --signer-workflow "$WF" \
-                --deny-self-hosted-runners --limit 50 && { ok=1; break; }
+              if gh attestation verify artifact.txt \
+                    --repo "${REPO}" \
+                    --predicate-type "${PT}" \
+                    --cert-oidc-issuer "https://token.actions.githubusercontent.com" \
+                    --signer-workflow "${WF}" \
+                    --deny-self-hosted-runners --limit 50; then
+                echo "✓ Verified ${PT}"
+                ok=1
+                break
+              fi
               sleep 10
             done
-            [ $ok -eq 1 ] || { echo "::warning::verify failed for $PT"; [ "${ENFORCEMENT}" = "block" ] && exit 1 || true; }
           done
+
+          [ $ok -eq 1 ] || {
+            echo "::warning::verify failed for at least one predicate";
+            [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
+          }
 
   # ---------------- Trust-store (JWKS / allowed_signers / revocations) ----------------
   trust_store_guard:
@@ -444,7 +459,7 @@ jobs:
 
   # ---------------- Trust-store auto-rotation ----------------
   trust_store_rotate:
-    if: ${{  vars.ORG_TRUST_REPO != '' }}
+    if: ${{github.event_name == 'schedule' && vars.ORG_TRUST_REPO != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
