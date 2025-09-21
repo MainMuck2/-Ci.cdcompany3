@@ -226,6 +226,25 @@ jobs:
               echo "::warning::KID mismatch (expected $K)"; [ "${ENFORCEMENT}" = "block" ] && exit 1 || true; }
           fi
 
+  # ---------------- Access recertification gate (BLOCK on expiry) ----------------
+  access_recert_gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - name: Block if any group recert is expired
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .github/trust/access_catalog.json || { echo "::error::missing .github/trust/access_catalog.json"; exit 1; }
+          NOW=$(date -u +%F)
+          EXPIRED=$(jq -r --arg NOW "$NOW" '.groups[] | select(.recert_expires_at < $NOW) | .name' .github/trust/access_catalog.json)
+          if [ -n "$EXPIRED" ]; then
+            echo "::error::Access recert expired for groups:"
+            echo "$EXPIRED" | sed 's/^/- /'
+            exit 1
+          fi
+          echo "Access recert OK as of $NOW"
+
   # ---------------- KMS sign + verify ----------------
   kms_sign_and_verify:
     needs: [build_and_attest, trust_store_guard]
@@ -358,7 +377,7 @@ jobs:
             exit 0
           fi
 
-          PATTERN='AKIA|ASIA|ghp_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{82,}|xox[abrs]-|BEGIN (RSA |OPENSSH )?PRIVATE KEY|SECRET_ACCESS_KEY|token=|password='
+          PATTERN='AKIA|ASIA|ghp_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{82,}|xox[abrs]-|BEGIN (RSA |OPENSSH )? PRIVATE KEY|SECRET_ACCESS_KEY|token=|password='
           if grep -RInE --binary-files=without-match \
                --exclude-dir=.git --exclude-dir=.github \
                "$PATTERN" _scan/artifacts ; then
@@ -468,7 +487,7 @@ jobs:
 
   # ---------------- Release-only gate + trust-store verify for deploy ----------------
   prod_release_gate:
-    needs: [build_and_attest, trust_store_guard, kms_sign_and_verify, sbom_enforce, verify_action_publishers]
+    needs: [access_recert_gate, build_and_attest, trust_store_guard, kms_sign_and_verify, sbom_enforce, verify_action_publishers]
     if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-latest
     steps:
@@ -521,6 +540,48 @@ jobs:
       cancel-in-progress: true
     steps:
       - run: echo "All upstream gates passed. Waiting for env approval…"
+
+  # ---------------- Rollback to Production (dual-auth via environment) ----------------
+  rollback_to_prod:
+    needs: [prod_release_gate, access_recert_gate]
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - run: echo "Manual rollback to production requested. Waiting for environment approval..."
+      # TODO: добавить реальные шаги отката
+
+  # ---------------- Admin operations (dual-auth via admin-ops environment) ----------------
+  secrets_kms_admin:
+    needs: [access_recert_gate]
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: admin-ops
+    steps:
+      - run: echo "Admin operation on secrets/KMS. Waiting for environment approval..."
+      # TODO: добавить реальные действия (обновление секретов / KMS grants/policy)
+
+  rbac_admin:
+    needs: [access_recert_gate]
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: admin-ops
+    steps:
+      - run: echo "Admin operation on RBAC/permissions. Waiting for environment approval..."
+      # TODO: добавить реальные действия по изменению ролей/прав
+
+  trust_runners_admin:
+    needs: [access_recert_gate]
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: admin-ops
+    steps:
+      - run: echo "Admin operation on trusted/registration runners. Waiting for environment approval..."
+      # TODO: добавить регистрацию/изменение доверенных раннеров
 
   # ---------------- Trust-store auto-rotation ----------------
   trust_store_rotate:
