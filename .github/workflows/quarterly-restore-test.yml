@@ -1,18 +1,26 @@
 name: Quarterly Restore Test
+
 on:
-  schedule: [{ cron: "23 3 1 1,4,7,10 *" }]
+  schedule:
+    - cron: '23 3 1 1,4,7,10 *'
   workflow_dispatch:
 
-permissions: { id-token: write, contents: read }
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   restore-test:
     runs-on: ubuntu-latest
     steps:
       - uses: aws-actions/configure-aws-credentials@v4
-        with: { role-to-assume: ${{ vars.AWS_ROLE_ARN }}, aws-region: ${{ vars.AWS_REGION }} }
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
       - name: Download latest backup & check
-        env: { B: ${{ vars.BACKUP_BUCKET }} }
+        env:
+          B: ${{ vars.BACKUP_BUCKET }}
         run: |
           set -euo pipefail
           test -n "$B"
