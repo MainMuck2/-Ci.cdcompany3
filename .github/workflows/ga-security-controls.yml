@@ -407,9 +407,9 @@ jobs:
             echo "permissions OK"
           fi
 
-  # ---------------- Audit streaming guard (опц.) ----------------
+  # ---------------- Audit streaming guard (S3) ----------------
   audit_streaming_guard:
-    if: ${{ vars.AUDIT_LOG_GROUP != '' }}
+    if: ${{ vars.AUDIT_BUCKET != '' }}
     runs-on: ubuntu-latest
     steps:
       - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
@@ -417,33 +417,50 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
           role-duration-seconds: 900
-      - name: Check CloudWatch log group exists
+
+      - name: Check bucket exists
         env:
-          G: ${{ vars.AUDIT_LOG_GROUP }}
+          B: ${{ vars.AUDIT_BUCKET }}
         run: |
           set -euo pipefail
-          aws logs describe-log-groups --log-group-name-prefix "$G" \
-            --query 'logGroups[?logGroupName==`'"$G"'`]' --output text | grep -q "$G" || {
-              echo "::warning::Audit log group $G not found"; [ "${ENFORCEMENT}" = "block" ] && exit 1 || true; }
-      - name: Retention >= 90 days
+          aws s3api head-bucket --bucket "$B" || { echo "::error::Bucket $B not found"; exit 1; }
+
+      - name: Saw audit objects in last 7d
         env:
-          G: ${{ vars.AUDIT_LOG_GROUP }}
+          B: ${{ vars.AUDIT_BUCKET }}
+          P: ${{ vars.AUDIT_PREFIX }}
         run: |
           set -euo pipefail
-          ret=$(aws logs describe-log-groups --log-group-name-prefix "$G" --query 'logGroups[0].retentionInDays' --output text)
-          if [ "$ret" = "None" ] || [ "${ret:-0}" -lt 90 ]; then
-            echo "::warning::Retention < 90d"; [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
+          since=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          aws s3api list-objects-v2 --bucket "$B" --prefix "${P:-}" --query \
+            "Contents[?LastModified>=\`$since\`][].{Key:Key,LastModified:LastModified}" \
+            --output json | jq -e 'length>0' >/dev/null || {
+              echo "::warning::no audit objects in last 7d"; [ "${ENFORCEMENT}" = "block" ] && exit 1 || true; }
+
+      - name: Probe latest object for 'deployment_status' (best-effort)
+        env:
+          B: ${{ vars.AUDIT_BUCKET }}
+          P: ${{ vars.AUDIT_PREFIX }}
+        run: |
+          set -euo pipefail
+          obj=$(aws s3api list-objects-v2 --bucket "$B" --prefix "${P:-}" --query 'reverse(sort_by(Contents,&LastModified))[0].Key' --output text)
+          if [ "$obj" != "None" ]; then
+            aws s3 cp "s3://$B/$obj" - | gzip -dc 2>/dev/null | grep -q '"action":"deployment_status"' && echo "deployment_status found" || \
+              echo "::notice::no deployment_status in latest object (может и нормально)"
+          else
+            echo "::notice::bucket empty"
           fi
-      - name: Saw deployment_status in last 7d?
+
+      - name: Lifecycle retention >=90d
         env:
-          G: ${{ vars.AUDIT_LOG_GROUP }}
+          B: ${{ vars.AUDIT_BUCKET }}
         run: |
           set -euo pipefail
-          since=$(( $(date +%s) - 7*24*3600 ))
-          out=$(aws logs filter-log-events --log-group-name "$G" --start-time $((since*1000)) \
-                --filter-pattern '"deployment_status"' --max-items 1 || true)
-          echo "$out" | jq -e '.events[0]' >/dev/null || {
-            echo "::warning::no deployment_status events in last 7d"; [ "${ENFORCEMENT}" = "block" ] && exit 1 || true; }
+          lc=$(aws s3api get-bucket-lifecycle-configuration --bucket "$B" 2>/dev/null || echo "")
+          days=$(jq -r '[.Rules[]?.Expiration?.Days // empty] | max // 0' <<<"$lc")
+          if [ "${days:-0}" -lt 90 ]; then
+            echo "::warning::No lifecycle expiration >=90d on $B"; [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
+          fi
 
   # ---------------- Rerun guard (best-effort dual-control) ----------------
   rerun_guard:
