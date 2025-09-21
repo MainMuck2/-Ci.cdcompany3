@@ -444,7 +444,7 @@ jobs:
 
   # ---------------- Trust-store auto-rotation ----------------
   trust_store_rotate:
-    if: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && vars.ORG_TRUST_REPO != '' }}
+    if: ${{  vars.ORG_TRUST_REPO != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
