@@ -29,7 +29,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: github/codeql-action/init@v3
-        with: { languages: python, actions, javascript }
+        with:
+          languages: [actions, javascript, python]
       - uses: github/codeql-action/analyze@v3
 
   dependency_review:
@@ -92,7 +93,8 @@ jobs:
   build_and_attest:
     needs: [codeql, dependency_review, verify_action_publishers]
     runs-on: ubuntu-latest
-    env: { GH_TOKEN: ${{ github.token }} }
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
 
@@ -126,16 +128,20 @@ jobs:
       - name: Attest provenance
         if: env.CAN_ATTEST == 'true'
         uses: actions/attest-build-provenance@v1
-        with: { subject-path: artifact.txt }
+        with:
+          subject-path: artifact.txt
 
       - name: Attest SBOM
         if: env.CAN_ATTEST == 'true'
         uses: actions/attest-sbom@v1
-        with: { subject-path: artifact.txt, sbom-path: sbom.spdx.json }
+        with:
+          subject-path: artifact.txt
+          sbom-path: sbom.spdx.json
 
       - name: Verify attestations
         if: env.CAN_ATTEST == 'true'
-        env: { GH_TOKEN: ${{ env.GH_TOKEN }} }
+        env:
+          GH_TOKEN: ${{ env.GH_TOKEN }}
         run: |
           set -euo pipefail
           if ! gh attestation --help >/dev/null 2>&1; then gh extension install github/gh-attestation; fi
@@ -163,7 +169,8 @@ jobs:
       - name: Load org trust-store (if set)
         id: t
         shell: bash
-        env: { ORG_TRUST_REPO: ${{ vars.ORG_TRUST_REPO }} }
+        env:
+          ORG_TRUST_REPO: ${{ vars.ORG_TRUST_REPO }}
         run: |
           set -euo pipefail
           mkdir -p .github/trust
@@ -180,7 +187,8 @@ jobs:
           fi
 
       - name: Validate trust-store files
-        env: { AWS_KMS_KEY_ID: ${{ vars.AWS_KMS_KEY_ID }} }
+        env:
+          AWS_KMS_KEY_ID: ${{ vars.AWS_KMS_KEY_ID }}
         run: |
           set -euo pipefail
           test -f .github/trust/publishers.jwks.json || { echo "::error::JWKS missing"; exit 1; }
@@ -197,11 +205,14 @@ jobs:
   kms_sign_and_verify:
     needs: [build_and_attest, trust_store_guard]
     runs-on: ubuntu-latest
-    permissions: { id-token: write, contents: read }
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
-        with: { name: build }
+        with:
+          name: build
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -231,7 +242,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
-        with: { name: build }
+        with:
+          name: build
       - name: Enforce SBOM digest
         shell: bash
         run: |
@@ -312,7 +324,10 @@ jobs:
           openssl pkey -in app.pem -noout >/dev/null
       - name: GH App installation token (no external action)
         id: app_token
-        env: { APP_ID: ${{ secrets.GHAPP_ID }}, API_URL: ${{ github.api_url }}, REPO: ${{ github.repository }} }
+        env:
+          APP_ID: ${{ secrets.GHAPP_ID }}
+          API_URL: ${{ github.api_url }}
+          REPO: ${{ github.repository }}
         shell: bash
         run: |
           set -euo pipefail
@@ -327,7 +342,8 @@ jobs:
           TOKEN=$(curl -fsSL -X POST -H "Authorization: Bearer ${JWT}" -H "Accept: application/vnd.github+json" "$API/app/installations/$INST_ID/access_tokens" | jq -r .token)
           echo "GH_TOKEN=$TOKEN" >> "$GITHUB_ENV"; rm -f app.pem
       - name: Check repo security flags (secret scanning + push protection)
-        env: { GH_TOKEN: ${{ env.GH_TOKEN }} }
+        env:
+          GH_TOKEN: ${{ env.GH_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -347,7 +363,8 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
           role-duration-seconds: 900
       - name: Enforce SSE-KMS on backup bucket
-        env: { B: ${{ vars.BACKUP_BUCKET }} }
+        env:
+          B: ${{ vars.BACKUP_BUCKET }}
         run: |
           set -euo pipefail
           enc=$(aws s3api get-bucket-encryption --bucket "$B" \
@@ -357,7 +374,8 @@ jobs:
             echo "::warning::Bucket $B not SSE-KMS"; [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
           fi
       - name: Enforce lifecycle >=30 days
-        env: { B: ${{ vars.BACKUP_BUCKET }} }
+        env:
+          B: ${{ vars.BACKUP_BUCKET }}
         run: |
           set -euo pipefail
           lc=$(aws s3api get-bucket-lifecycle-configuration --bucket "$B" 2>/dev/null || echo "")
@@ -393,14 +411,16 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
           role-duration-seconds: 900
       - name: Check CloudWatch log group exists
-        env: { G: ${{ vars.AUDIT_LOG_GROUP }} }
+        env:
+          G: ${{ vars.AUDIT_LOG_GROUP }}
         run: |
           set -euo pipefail
           aws logs describe-log-groups --log-group-name-prefix "$G" \
             --query 'logGroups[?logGroupName==`'"$G"'`]' --output text | grep -q "$G" || {
               echo "::warning::Audit log group $G not found"; [ "${ENFORCEMENT}" = "block" ] && exit 1 || true; }
       - name: Retention >= 90 days
-        env: { G: ${{ vars.AUDIT_LOG_GROUP }} }
+        env:
+          G: ${{ vars.AUDIT_LOG_GROUP }}
         run: |
           set -euo pipefail
           ret=$(aws logs describe-log-groups --log-group-name-prefix "$G" --query 'logGroups[0].retentionInDays' --output text)
@@ -408,7 +428,8 @@ jobs:
             echo "::warning::Retention < 90d"; [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
           fi
       - name: Saw deployment_status in last 7d?
-        env: { G: ${{ vars.AUDIT_LOG_GROUP }} }
+        env:
+          G: ${{ vars.AUDIT_LOG_GROUP }}
         run: |
           set -euo pipefail
           since=$(( $(date +%s) - 7*24*3600 ))
@@ -477,7 +498,8 @@ jobs:
   promote_to_prod:
     needs: [prod_release_gate]
     runs-on: ubuntu-latest
-    environment: { name: production }
+    environment:
+      name: production
     concurrency:
       group: deploy-${{ github.ref_name }}
       cancel-in-progress: true
