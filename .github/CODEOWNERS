@@ -1,3 +1,4 @@
 # Защита trust-store и workflow'ов
 .github/trust/**        @MainMuck/security
 .github/workflows/**    @MainMuck/security
+.github/trust/*         @MainMuck/security

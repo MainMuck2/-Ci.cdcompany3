@@ -1,0 +1,23 @@
+name: Quarterly Restore Test
+on:
+  schedule: [{ cron: "23 3 1 1,4,7,10 *" }]
+  workflow_dispatch:
+
+permissions: { id-token: write, contents: read }
+
+jobs:
+  restore-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with: { role-to-assume: ${{ vars.AWS_ROLE_ARN }}, aws-region: ${{ vars.AWS_REGION }} }
+      - name: Download latest backup & check
+        env: { B: ${{ vars.BACKUP_BUCKET }} }
+        run: |
+          set -euo pipefail
+          test -n "$B"
+          key=$(aws s3 ls "s3://$B/backups/" --recursive | sort | awk '{print $4}' | tail -n1)
+          aws s3 cp "s3://$B/$key" backup.tgz
+          mkdir restore && tar xzf backup.tgz -C restore
+          test -d restore/.github/workflows
+          echo "OK"
