@@ -17,9 +17,7 @@ permissions:
   attestations: write
 
 env:
-  # block на default branch, warn на остальных
   ENFORCEMENT: ${{ github.ref_name == github.event.repository.default_branch && 'block' || 'warn' }}
-  # Аттестируем на push / workflow_dispatch / PR из этой же репы (НЕ из форков)
   CAN_ATTEST: ${{ (github.event_name == 'push') || (github.event_name == 'workflow_dispatch') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
 
 jobs:
@@ -312,15 +310,22 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
           role-duration-seconds: 900
+
       - name: Fetch GH App private key from Secrets Manager
         shell: bash
         run: |
           set -euo pipefail
           umask 077
           RAW="$(aws secretsmanager get-secret-value --secret-id ci/github/app-private-key --query SecretString --output text)"
-          if printf '%s' "$RAW" | head -n1 | grep -q '-----BEGIN '; then printf '%s' "$RAW" > app.pem
-          else VAL=$(printf '%s' "$RAW" | jq -r '.value // empty'); printf '%s' "$VAL" > app.pem; fi
+          if printf '%s' "$RAW" | head -n1 | grep -q -- '-----BEGIN '; then
+            printf '%s' "$RAW" > app.pem
+          else
+            VAL=$(printf '%s' "$RAW" | jq -r '(.value // .privkey // .key // empty)' 2>/dev/null || true)
+            [ -n "${VAL:-}" ] || { echo "::error::Secret is not PEM and no JSON field value/privkey/key"; exit 1; }
+            printf '%s' "$VAL" > app.pem
+          fi
           openssl pkey -in app.pem -noout >/dev/null
+
       - name: GH App installation token (no external action)
         id: app_token
         env:
@@ -340,6 +345,7 @@ jobs:
           INST_ID=$(curl -fsSL -H "Authorization: Bearer ${JWT}" -H "Accept: application/vnd.github+json" "$API/repos/$REPO/installation" | jq -r .id)
           TOKEN=$(curl -fsSL -X POST -H "Authorization: Bearer ${JWT}" -H "Accept: application/vnd.github+json" "$API/app/installations/$INST_ID/access_tokens" | jq -r .token)
           echo "GH_TOKEN=$TOKEN" >> "$GITHUB_ENV"; rm -f app.pem
+
       - name: Check repo security flags (secret scanning + push protection)
         env:
           GH_TOKEN: ${{ env.GH_TOKEN }}
@@ -489,7 +495,6 @@ jobs:
           wf=$(jq -r .job_workflow_ref <<<"$body")
           [ "$repo" = "${GITHUB_REPOSITORY}" ] || { echo "::error::OIDC repo mismatch"; exit 1; }
           echo "$ref" | grep -Eq '^refs/(heads/(main|release/.*)|tags/v.*)$' || { echo "::error::OIDC ref not allowed"; exit 1; }
-          # allowed_signers must contain EXACT OIDC job_workflow_ref (ORG/REPO/.github/workflows/file@refs/heads/<branch>)
           jq -r '.[]?' .github/trust/allowed_signers.json | grep -Fx "$wf" >/dev/null || {
             echo "::error::workflow not in allowed_signers"; exit 1; }
 
