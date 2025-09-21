@@ -155,9 +155,12 @@ jobs:
           WF="${GITHUB_WORKFLOW_REF}"
           REPO="${GITHUB_REPOSITORY}"
           echo "Verifying signer-workflow=${WF}"
-          ok=0
+
+          successes=0
+          failures=0
           for PT in "https://slsa.dev/provenance/v1" "https://spdx.dev/Document"; do
             echo "Trying predicate: ${PT}"
+            verified=0
             for i in $(seq 1 8); do
               if gh attestation verify artifact.txt \
                     --repo "${REPO}" \
@@ -166,16 +169,20 @@ jobs:
                     --signer-workflow "${WF}" \
                     --deny-self-hosted-runners --limit 50; then
                 echo "✓ Verified ${PT}"
-                ok=1
+                verified=1
                 break
               fi
               sleep 10
             done
+            if [ $verified -eq 1 ]; then
+              successes=$((successes+1))
+            else
+              echo "::warning::verify failed for ${PT}"
+              failures=$((failures+1))
+            fi
           done
-          [ $ok -eq 1 ] || {
-            echo "::warning::verify failed for at least one predicate";
-            [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
-          }
+
+          [ $failures -eq 0 ] || { [ "${ENFORCEMENT}" = "block" ] && exit 1 || true; }
 
   # ---------------- Trust-store (JWKS / allowed_signers / revocations) ----------------
   trust_store_guard:
@@ -317,11 +324,17 @@ jobs:
         run: |
           set -euo pipefail
           PATTERN='AKIA|ASIA|ghp_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{82,}|xox[abrs]-|BEGIN (RSA |OPENSSH )?PRIVATE KEY|SECRET_ACCESS_KEY|token=|password='
+
           found=0
-          grep -RInE "$PATTERN" -- . ':!**/.git/**' || true
+          # repo (исключаем .git)
+          grep -RInE "$PATTERN" -- . --exclude-dir=.git || true
           [ ${PIPESTATUS[0]} -eq 0 ] && found=1
-          grep -RInE "$PATTERN" -- .github/workflows ':!**/.git/**' || true
-          [ ${PIPESTATUS[0]} -eq 0 ] && found=1
+          # workflows отдельно
+          if [ -d .github/workflows ]; then
+            grep -RInE "$PATTERN" -- .github/workflows --exclude-dir=.git || true
+            [ ${PIPESTATUS[0]} -eq 0 ] && found=1
+          fi
+
           if [ $found -eq 1 ]; then
             echo "::warning::possible secrets found in repo/workflows"
             [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
@@ -337,21 +350,23 @@ jobs:
         continue-on-error: true
 
       - name: Scan artifacts for secrets (if present)
-        if: hashFiles('_scan/artifacts/**') != ''
         shell: bash
         run: |
           set -euo pipefail
+          if [ ! -d "_scan/artifacts" ] || ! ls -A _scan/artifacts >/dev/null 2>&1; then
+            echo "::warning::no build artifacts to scan (skipping)"
+            exit 0
+          fi
+
           PATTERN='AKIA|ASIA|ghp_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{82,}|xox[abrs]-|BEGIN (RSA |OPENSSH )?PRIVATE KEY|SECRET_ACCESS_KEY|token=|password='
-          if grep -RInE "$PATTERN" -- _scan/artifacts ':!**/.git/**' ; then
+          if grep -RInE --binary-files=without-match \
+               --exclude-dir=.git --exclude-dir=.github \
+               "$PATTERN" _scan/artifacts ; then
             echo "::warning::possible secrets found in build artifacts"
             [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
           else
             echo "no secrets detected in artifacts (heuristic)"
           fi
-
-      - name: No artifacts to scan (warn)
-        if: hashFiles('_scan/artifacts/**') == ''
-        run: echo "::warning::no build artifacts to scan (skipping)"
 
   # ---------------- Permissions gate ----------------
   permissions_gate:
