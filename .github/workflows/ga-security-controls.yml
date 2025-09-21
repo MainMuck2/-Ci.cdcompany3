@@ -203,6 +203,7 @@ jobs:
   kms_sign_and_verify:
     needs: [build_and_attest, trust_store_guard]
     runs-on: ubuntu-latest
+    continue-on-error: ${{ env.ENFORCEMENT != 'block' }}  # warn на не-main
     permissions:
       id-token: write
       contents: read
@@ -233,6 +234,39 @@ jobs:
           openssl pkey -pubin -inform DER -in aws-pub.der -out aws-pub.pem
           openssl dgst -sha256 -verify aws-pub.pem -signature artifact.sig \
             -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:digest -sigopt rsa_mgf1_md:sha256 artifact.txt
+
+      - name: Trust-store check for signer (warn)
+        shell: bash
+        env:
+          KID: AWS:${{ vars.AWS_KMS_KEY_ID }}
+          ENF: ${{ env.ENFORCEMENT }}
+        run: |
+          set -euo pipefail
+          ok=0
+          test -f .github/trust/publishers.jwks.json && \
+            jq -e --arg k "$KID" '.keys[]?|.kid==$k' .github/trust/publishers.jwks.json >/dev/null && ok=1
+          revoked=0
+          test -f .github/trust/revocations.json && \
+            jq -e --arg k "$KID" '.kids[]?|.==$k' .github/trust/revocations.json >/dev/null && revoked=1 || true
+
+          if [ $ok -ne 1 ]; then
+            echo "::warning::Signer $KID is NOT in publishers.jwks.json"
+            [ "${ENF}" = "block" ] && exit 1 || true
+          fi
+          if [ $revoked -eq 1 ]; then
+            echo "::warning::Signer $KID is REVOKED in revocations.json"
+            [ "${ENF}" = "block" ] && exit 1 || true
+          fi
+
+      - name: Save signing evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: signing-evidence
+          path: |
+            artifact.txt
+            artifact.sig
+            aws-pub.pem
+            checksums.txt
 
   # ---------------- SBOM enforce ----------------
   sbom_enforce:
@@ -301,7 +335,6 @@ jobs:
             now=$(date -u +%s)
             exp=$(date -u -d "${EXP}" +%s 2>/dev/null || echo 0)
             [ "$exp" -ge "$now" ] || { echo "::warning::access recert expired"; [ "${ENFORCEMENT}" = "block" ] && exit 1 || true; }
-          fi
 
   # ---------------- Org security flags (App) ----------------
   security_settings_guard:
