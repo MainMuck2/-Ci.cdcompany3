@@ -30,7 +30,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: github/codeql-action/init@v3
         with:
-          languages: [actions, javascript, python]
+          languages: "actions, javascript, python"
       - uses: github/codeql-action/analyze@v3
 
   dependency_review:
@@ -302,7 +302,6 @@ jobs:
           if [ -n "${EXP:-}" ]; then
             now=$(date -u +%s); exp=$(date -u -d "${EXP}" +%s 2>/dev/null || echo 0)
             [ $exp -ge $now ] || { echo "::warning::access recert expired"; [ "${ENFORCEMENT}" = "block" ] && exit 1 || true; }
-          fi
 
   # ---------------- Org security flags (App) ----------------
   security_settings_guard:
