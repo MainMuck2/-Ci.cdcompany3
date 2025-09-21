@@ -587,7 +587,7 @@ jobs:
 
   # ---------------- Trust-store auto-rotation (по расписанию) ----------------
   trust_store_rotate:
-    if: ${{ github.event_name == 'schedule' && vars.ORG_TRUST_REPO != '' }}
+    if: ${{vars.ORG_TRUST_REPO != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
