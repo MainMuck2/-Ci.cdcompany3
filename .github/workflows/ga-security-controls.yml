@@ -11,6 +11,11 @@ on:
   schedule:
     - cron: "0 */6 * * *" # каждые 6 часов авто-синк trust-store (org → repo)
 
+# отменяем предыдущие запуски этого же workflow для той же ветки/тэга
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   security-events: write
@@ -147,11 +152,9 @@ jobs:
           if ! gh attestation --help >/dev/null 2>&1; then
             gh extension install github/gh-attestation
           fi
-
           WF="${GITHUB_WORKFLOW_REF}"
           REPO="${GITHUB_REPOSITORY}"
           echo "Verifying signer-workflow=${WF}"
-
           ok=0
           for PT in "https://slsa.dev/provenance/v1" "https://spdx.dev/Document"; do
             echo "Trying predicate: ${PT}"
@@ -169,7 +172,6 @@ jobs:
               sleep 10
             done
           done
-
           [ $ok -eq 1 ] || {
             echo "::warning::verify failed for at least one predicate";
             [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
@@ -185,8 +187,8 @@ jobs:
         id: t
         shell: bash
         env:
-          ORG_TRUST_REPO: ${{ vars.ORG_TRUST_REPO }}   # пример: MainMuck/ORG-security-infra
-          GH_TOKEN: ${{ secrets.ORG_READ_TOKEN }}      # PAT с read-only к org-репо
+          ORG_TRUST_REPO: ${{ vars.ORG_TRUST_REPO }}
+          GH_TOKEN: ${{ secrets.ORG_READ_TOKEN }}
         run: |
           set -euo pipefail
           mkdir -p .github/trust
@@ -459,14 +461,13 @@ jobs:
 
   # ---------------- Trust-store auto-rotation ----------------
   trust_store_rotate:
-    if: ${{github.event_name == 'schedule' && vars.ORG_TRUST_REPO != '' }}
+    if: ${{ github.event_name == 'schedule' && vars.ORG_TRUST_REPO != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
-
       - name: Pull org trust-store
         env:
           ORG_TRUST_REPO: ${{ vars.ORG_TRUST_REPO }}
@@ -478,7 +479,6 @@ jobs:
           test -d _orgtrust/.github/trust || { echo "no .github/trust in $ORG_TRUST_REPO"; exit 0; }
           mkdir -p .github/trust
           cp -a _orgtrust/.github/trust/. .github/trust/
-
       - name: Detect changes
         id: diff
         run: |
@@ -495,7 +495,6 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
             echo "branch=$BR" >> "$GITHUB_OUTPUT"
           fi
-
       - name: Open PR
         if: steps.diff.outputs.changed == 'true'
         env:
