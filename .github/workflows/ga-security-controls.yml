@@ -256,15 +256,14 @@ jobs:
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
-      # -- NEW: вывести фактические клеймы OIDC, чтобы trust-policy совпадал
       - name: Debug OIDC claims
         shell: bash
-        env:
-          REQ_URL: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL }}
-          REQ_TOK: ${{ env.ACTIONS_ID_TOKEN_REQUEST_TOKEN }}
         run: |
           set -euo pipefail
-          tok=$(curl -sS -H "Authorization: Bearer $REQ_TOK" "${REQ_URL}&audience=sts.amazonaws.com" | jq -r .value)
+          : "${ACTIONS_ID_TOKEN_REQUEST_URL:?ACTIONS_ID_TOKEN_REQUEST_URL is missing}"
+          : "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:?ACTIONS_ID_TOKEN_REQUEST_TOKEN is missing}"
+          tok=$(curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+                "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" | jq -r .value)
           body=$(echo "$tok" | awk -F. '{print $2}' | base64 -d 2>/dev/null)
           echo "repository: $(jq -r .repository <<<"$body")"
           echo "ref:        $(jq -r .ref <<<"$body")"
