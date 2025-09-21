@@ -27,16 +27,16 @@ jobs:
   codeql:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v3
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - uses: github/codeql-action/init@192325c86100d080feab897ff886c34abd4c83a3
         with:
           languages: "actions, javascript, python"
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@192325c86100d080feab897ff886c34abd4c83a3
 
   dependency_review:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
       - name: Compute base/head refs
         id: deprefs
         shell: bash
@@ -54,7 +54,7 @@ jobs:
           else
             echo "base=$(jq -r .pull_request.base.sha "$GITHUB_EVENT_PATH")" >> "$GITHUB_OUTPUT"
           fi
-      - uses: actions/dependency-review-action@v4
+      - uses: actions/dependency-review-action@595b5aeba73380359d98a5e087f648dbb0edce1b
         if: steps.deprefs.outputs.base != ''
         with:
           base-ref: ${{ steps.deprefs.outputs.base }}
@@ -66,7 +66,7 @@ jobs:
   verify_action_publishers:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
       - name: Verify publishers + pin to commit
         env:
           GH_TOKEN: ${{ github.token }}
@@ -96,7 +96,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
       - name: Build artifact
         run: |
@@ -117,7 +117,7 @@ jobs:
              [{"fileName":"artifact.txt","SPDXID":"SPDXRef-File-artifact.txt","checksums":[{"algorithm":"SHA256","checksumValue":$d}]}]' \
              sbom.spdx.json > t && mv t sbom.spdx.json
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: build
           path: |
@@ -127,13 +127,13 @@ jobs:
 
       - name: Attest provenance
         if: env.CAN_ATTEST == 'true'
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@ef244123eb79f2f7a7e75d99086184180e6d0018
         with:
           subject-path: artifact.txt
 
       - name: Attest SBOM
         if: env.CAN_ATTEST == 'true'
-        uses: actions/attest-sbom@v1
+        uses: actions/attest-sbom@5026d3663739160db546203eeaffa6aa1c51a4d6
         with:
           subject-path: artifact.txt
           sbom-path: sbom.spdx.json
@@ -164,7 +164,7 @@ jobs:
   trust_store_guard:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
       - name: Load org trust-store (if set)
         id: t
@@ -209,12 +209,12 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: build
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
@@ -241,7 +241,7 @@ jobs:
     needs: [build_and_attest]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: build
       - name: Enforce SBOM digest
@@ -258,7 +258,7 @@ jobs:
   secrets_scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
       - name: Heuristic secret scan (code + workflows + artifacts)
         shell: bash
         run: |
@@ -307,7 +307,7 @@ jobs:
   security_settings_guard:
     runs-on: ubuntu-latest
     steps:
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
@@ -356,7 +356,7 @@ jobs:
     if: ${{ vars.BACKUP_BUCKET != '' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
@@ -387,7 +387,7 @@ jobs:
   permissions_gate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
       - name: Lint permissions (deny dangerous writes)
         run: |
           set -euo pipefail
@@ -404,7 +404,7 @@ jobs:
     if: ${{ vars.AUDIT_LOG_GROUP != '' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
