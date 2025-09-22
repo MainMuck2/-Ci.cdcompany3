@@ -527,15 +527,54 @@ jobs:
         env:
           B: ${{ vars.AUDIT_BUCKET }}
           P: ${{ vars.AUDIT_PREFIX }}
+        shell: bash
         run: |
           set -euo pipefail
-          obj=$(aws s3api list-objects-v2 --bucket "$B" --prefix "${P:-}" --query 'reverse(sort_by(Contents,&LastModified))[0].Key' --output text)
-          if [ "$obj" != "None" ]; then
-            aws s3 cp "s3://$B/$obj" - | gzip -dc 2>/dev/null | grep -q '"action":"deployment_status"' && echo "deployment_status found" || echo "::notice::no deployment_status in latest object (может и нормально)"
-          else
+          # Возьмём последние 20 ключей строго из JSON, чтобы не словить склейку строк/табов
+          KEYS_JSON=$(aws s3api list-objects-v2 --bucket "$B" --prefix "${P:-}" \
+            --query 'reverse(sort_by(Contents,&LastModified))[:20].Key' --output json)
+          mapfile -t KEYS < <(jq -r '.[]?' <<<"$KEYS_JSON")
+          if [ ${#KEYS[@]} -eq 0 ]; then
             echo "::notice::bucket empty"
+            exit 0
           fi
-      - name: Lifecycle retention >=90d
+
+          PATTERN='"action":"(deployment_status|workflow_[^"]+|artifact\.[^"]+|repository\.[^"]+)"'
+          found_any=0
+          for k in "${KEYS[@]}"; do
+            # Убедимся, что объект существует и не удалён
+            if ! aws s3api head-object --bucket "$B" --key "$k" >/dev/null 2>&1; then
+              echo "::notice::skip missing/deleted object: $k"
+              continue
+            fi
+            # Скачаем локально и распакуем .gz
+            tmp="$(mktemp)"
+            if ! aws s3 cp "s3://$B/$k" "$tmp" >/dev/null 2>&1; then
+              echo "::notice::failed to download: $k"
+              rm -f "$tmp"
+              continue
+            fi
+            if gzip -t "$tmp" 2>/dev/null; then
+              content=$(gzip -dc "$tmp" 2>/dev/null || printf '')
+            else
+              content=$(cat "$tmp" 2>/dev/null || printf '')
+            fi
+            rm -f "$tmp"
+
+            if [ -n "$content" ] && grep -Eq "$PATTERN" <<<"$content"; then
+              echo "✓ audit event(s) matched in: $k"
+              echo "$content" | grep -Eo "$PATTERN" | head -n 5 || true
+              found_any=1
+              break
+            else
+              echo "::notice::no target events in: $k"
+            fi
+          done
+
+          if [ $found_any -eq 0 ]; then
+            echo "::notice::no explicit deployment/workflow/artifact/repository actions found in last 20 objects (может и нормально)"
+          fi
+      - name: Lifecycle retention ≥90d
         env:
           B: ${{ vars.AUDIT_BUCKET }}
         run: |
@@ -543,7 +582,7 @@ jobs:
           lc=$(aws s3api get-bucket-lifecycle-configuration --bucket "$B" 2>/dev/null || echo "")
           days=$(jq -r '[.Rules[]?.Expiration?.Days // empty] | max // 0' <<<"$lc")
           if [ "${days:-0}" -lt 90 ]; then
-            echo "::warning::No lifecycle expiration >=90d on $B"; [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
+            echo "::warning::No lifecycle expiration ≥90d on $B"; [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
           fi
 
   # ---------------- Rerun guard (best-effort dual-control) ----------------
@@ -885,7 +924,6 @@ jobs:
         with:
           name: security-reports
           path: _reports
-        
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: security-reports
