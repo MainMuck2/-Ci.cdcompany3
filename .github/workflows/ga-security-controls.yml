@@ -148,7 +148,7 @@ jobs:
           GH_TOKEN: ${{ env.GH_TOKEN }}
         run: |
           set -euo pipefail
-          if ! gh attestation --help >/dev/null 2>/dev/null; then
+          if ! gh attestation --help >/dev/null 2>&1; then
             gh extension install github/gh-attestation
           fi
           WF="${GITHUB_WORKFLOW_REF}"
@@ -617,6 +617,7 @@ jobs:
           GH_TOKEN: ${{ secrets.ORG_READ_TOKEN }}
         run: |
           set -euo pipefail
+          rm -hf _orgtrust || true
           rm -rf _orgtrust
           gh repo clone "$ORG_TRUST_REPO" _orgtrust -- -q
           test -d _orgtrust/.github/trust || { echo "no .github/trust in $ORG_TRUST_REPO"; exit 0; }
@@ -650,7 +651,7 @@ jobs:
             --base "main" || true
 
   # ---------------- Policy-as-code: PR must have review + reason ----------------
-    pr_policy_gate:
+  pr_policy_gate:
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     permissions:
@@ -666,14 +667,12 @@ jobs:
           pr=$(jq -r .number "$GITHUB_EVENT_PATH")
           repo="${GITHUB_REPOSITORY}"
 
-          # ≥1 APPROVED review
           approved=$(gh pr view "$pr" --repo "$repo" --json reviews -q \
             '[.reviews[]?|select(.state=="APPROVED")] | length')
           if [ "${approved:-0}" -lt 1 ]; then
             echo "::error::Need at least 1 APPROVED review"; exit 1
           fi
 
-          # Причина изменения: метка или текст в описании
           has_label=$(gh pr view "$pr" --repo "$repo" --json labels -q \
             '[.labels[]?.name] | index("Change-Reason") != null')
           has_reason=$(gh pr view "$pr" --repo "$repo" --json body -q \
@@ -684,9 +683,8 @@ jobs:
 
           echo "Policy OK"
 
-
   # ---------------- Policy-as-code: pushes to protected branches from approved PR only ----------------
-    push_pr_only_gate:
+  push_pr_only_gate:
     if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-latest
     permissions:
@@ -700,7 +698,7 @@ jobs:
         run: |
           set -euo pipefail
           case "${GITHUB_REF}" in
-            refs/heads/main|refs/heads/release/*) ;;  # защищённые
+            refs/heads/main|refs/heads/release/*) ;;
             *) echo "non-protected ref -> OK"; exit 0;;
           esac
 
@@ -727,7 +725,6 @@ jobs:
           fi
 
           echo "Push is from approved PR with reason -> OK"
-
 
   # ---------------- Backup retention guard (≥30d) ----------------
   backup_retention_guard:
