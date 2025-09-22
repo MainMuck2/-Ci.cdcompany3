@@ -26,7 +26,6 @@ env:
 jobs:
   # ---------------- SAST / SCA presence ----------------
   codeql:
-    # нужно отправлять security-алерты
     permissions:
       contents: read
       security-events: write
@@ -79,11 +78,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # yq с проверкой подписи (checksum)
+          # yq с проверкой подписи (checksum), CRLF-safe, правильный формат для sha256sum -c
           VER_YQ="v4.44.3"
           curl -fsSL -o /tmp/yq_linux_amd64 "https://github.com/mikefarah/yq/releases/download/${VER_YQ}/yq_linux_amd64"
           curl -fsSL -o /tmp/checksums "https://github.com/mikefarah/yq/releases/download/${VER_YQ}/checksums"
-          ( cd /tmp && tr -d '\r' < checksums | awk '$2 ~ /\*?yq_linux_amd64$/ {print $1"  yq_linux_amd64"}' | sha256sum -c - )
+          (
+            cd /tmp
+            tr -d '\r' < checksums \
+            | awk '$2 ~ /\*?yq_linux_amd64$/ {print $1"  yq_linux_amd64"}' \
+            | sha256sum -c -
+          )
           sudo install -m0755 /tmp/yq_linux_amd64 /usr/local/bin/yq
 
           status=0
@@ -121,7 +125,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Установка syft с проверкой checksum
           VER="v1.33.0"
           FN="syft_${VER#v}_linux_amd64.tar.gz"
           URL="https://github.com/anchore/syft/releases/download/${VER}/${FN}"
@@ -133,7 +136,12 @@ jobs:
           fi
           curl -fsSL -o /tmp/sha.txt "https://github.com/anchore/syft/releases/download/${VER}/checksums.txt" || \
           curl -fsSL -o /tmp/sha.txt "https://github.com/anchore/syft/releases/download/${VER}/syft_${VER#v}_checksums.txt"
-          ( cd /tmp && tr -d '\r' < sha.txt | awk -v f="${FN}" '{g=$2; sub(/^\*/,"",g); if (g==f) print $1"  "f}' | sha256sum -c - )
+          (
+            cd /tmp
+            tr -d '\r' < sha.txt \
+            | awk -v f="${FN}" '{g=$2; sub(/^\*/,"",g); if (g==f) print $1"  "f}' \
+            | sha256sum -c -
+          )
           tar -xzf "/tmp/${FN}" -C /tmp syft
           sudo install -m0755 /tmp/syft /usr/local/bin/syft
 
@@ -277,8 +285,6 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
-
-      # Решаем, можно ли дергать AWS по правилам (main/release/*/tags v*)
       - name: Decide if AWS steps are allowed for this ref
         id: gate
         shell: bash
@@ -287,8 +293,6 @@ jobs:
             refs/heads/main|refs/heads/release/*|refs/tags/v*) echo "aws=yes"  >> "$GITHUB_OUTPUT" ;;
             *)                                               echo "aws=no"   >> "$GITHUB_OUTPUT" ;;
           esac
-
-      # Мягкий Debug OIDC (не ломает джоб даже если токена нет)
       - name: Debug OIDC claims
         if: steps.gate.outputs.aws == 'yes'
         continue-on-error: true
@@ -306,11 +310,9 @@ jobs:
           echo "ref:        $(jq -r 'try .ref            // empty' <<<"$body")"
           echo "workflow:   $(jq -r 'try .job_workflow_ref // empty' <<<"$body")"
           echo "sub:        $(jq -r 'try .sub           // empty' <<<"$body")"
-
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: build
-
       - name: Configure AWS (OIDC assume role)
         if: steps.gate.outputs.aws == 'yes'
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
@@ -320,7 +322,6 @@ jobs:
           role-duration-seconds: 900
           audience: sts.amazonaws.com
           role-session-name: gha-${{ github.run_id }}-${{ github.run_attempt }}
-
       - name: KMS Sign artifact.txt (PS256)
         if: steps.gate.outputs.aws == 'yes'
         run: |
@@ -328,7 +329,6 @@ jobs:
           aws kms sign --key-id "${{ vars.AWS_KMS_KEY_ID }}" \
             --signing-algorithm RSASSA_PSS_SHA_256 --message-type RAW \
             --message fileb://artifact.txt --query Signature --output text | base64 -d > artifact.sig
-
       - name: Fetch public key & verify
         if: steps.gate.outputs.aws == 'yes'
         run: |
@@ -338,12 +338,10 @@ jobs:
           openssl pkey -pubin -inform DER -in aws-pub.der -out aws-pub.pem
           openssl dgst -sha256 -verify aws-pub.pem -signature artifact.sig \
             -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:digest -sigopt rsa_mgf1_md:sha256 artifact.txt
-
       - name: AWS steps skipped for this ref
         if: steps.gate.outputs.aws != 'yes'
         run: |
           echo "::notice::Skipping AWS assume/sign (ref '${GITHUB_REF}' is not main/release/*/tags v*)"
-
       - name: Trust-store check for signer (warn)
         if: steps.gate.outputs.aws == 'yes'
         shell: bash
@@ -366,7 +364,6 @@ jobs:
             echo "::warning::Signer $KID is REVOKED in revocations.json"
             [ "${ENF}" = "block" ] && exit 1 || true
           fi
-
       - name: Save signing evidence
         if: steps.gate.outputs.aws == 'yes'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
