@@ -79,14 +79,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # yq с проверкой подписи (checksum) — ИСПРАВЛЕНО: корректное имя файла + CRLF
+          # yq с проверкой подписи (checksum)
           VER_YQ="v4.44.3"
           curl -fsSL -o /tmp/yq_linux_amd64 "https://github.com/mikefarah/yq/releases/download/${VER_YQ}/yq_linux_amd64"
           curl -fsSL -o /tmp/checksums "https://github.com/mikefarah/yq/releases/download/${VER_YQ}/checksums"
-          (
-            cd /tmp
-            tr -d '\r' < checksums | grep -E ' yq_linux_amd64$' | sha256sum -c -
-          )
+          ( cd /tmp && tr -d '\r' < checksums | awk '$2 ~ /\*?yq_linux_amd64$/ {print $1"  yq_linux_amd64"}' | sha256sum -c - )
           sudo install -m0755 /tmp/yq_linux_amd64 /usr/local/bin/yq
 
           status=0
@@ -124,7 +121,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Установка syft с проверкой checksum — ДОБАВЛЕНО: CRLF-safe проверка
+          # Установка syft с проверкой checksum
           VER="v1.33.0"
           FN="syft_${VER#v}_linux_amd64.tar.gz"
           URL="https://github.com/anchore/syft/releases/download/${VER}/${FN}"
@@ -136,10 +133,7 @@ jobs:
           fi
           curl -fsSL -o /tmp/sha.txt "https://github.com/anchore/syft/releases/download/${VER}/checksums.txt" || \
           curl -fsSL -o /tmp/sha.txt "https://github.com/anchore/syft/releases/download/${VER}/syft_${VER#v}_checksums.txt"
-          (
-            cd /tmp
-            tr -d '\r' < sha.txt | grep " ${FN}$" | sha256sum -c -
-          )
+          ( cd /tmp && tr -d '\r' < sha.txt | awk -v f="${FN}" '{g=$2; sub(/^\*/,"",g); if (g==f) print $1"  "f}' | sha256sum -c - )
           tar -xzf "/tmp/${FN}" -C /tmp syft
           sudo install -m0755 /tmp/syft /usr/local/bin/syft
 
@@ -180,7 +174,6 @@ jobs:
           if ! gh attestation --help >/dev/null 2>&1; then
             gh extension install github/gh-attestation@v0.1.0
           fi
-          # убеждаемся, что зафиксированная версия
           gh extension list | grep -E '^gh-attestation\s' | grep 'v0\.1\.0' >/dev/null || { echo "::error::gh-attestation must be v0.1.0"; exit 1; }
 
           WF="${GITHUB_WORKFLOW_REF}"
