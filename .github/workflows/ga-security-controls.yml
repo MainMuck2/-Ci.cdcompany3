@@ -904,6 +904,7 @@ jobs:
         with:
           name: security-reports
           path: reports
+          overwrite: true
       - name: Upload reports to Release
         env:
           GH_TOKEN: ${{ github.token }}
