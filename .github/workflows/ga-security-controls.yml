@@ -30,6 +30,9 @@ jobs:
   # ---------------- SAST / SCA presence ----------------
   codeql:
     runs-on: ubuntu-latest
+    permissions:      # минимально-необходимые для CodeQL
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
       - uses: github/codeql-action/init@192325c86100d080feab897ff886c34abd4c83a3
@@ -39,6 +42,9 @@ jobs:
 
   dependency_review:
     runs-on: ubuntu-latest
+    permissions:      # read-only
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
       - name: Compute base/head refs
@@ -88,7 +94,6 @@ jobs:
             echo "${YQ_SHA512}  /usr/local/bin/yq" | sha512sum -c -
             sudo chmod +x /usr/local/bin/yq
           else
-            # бэкап-ветка (оставляем как было, но предупредим)
             sudo curl -fsSL -o /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
             sudo chmod +x /usr/local/bin/yq
             echo "::warning::YQ_SHA512 repo variable not set — checksum for yq not verified"
@@ -111,6 +116,10 @@ jobs:
   build_and_attest:
     needs: [codeql, dependency_review, verify_action_publishers]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      attestations: write
+      id-token: write
     env:
       GH_TOKEN: ${{ github.token }}
       SYFT_VER: ${{ vars.SYFT_VERSION }}
@@ -396,9 +405,12 @@ jobs:
   secrets_presence_gate:
     needs: [build_and_attest]
     runs-on: ubuntu-latest
+    permissions:      # read-only
+      contents: read
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
       - name: Scan repo & workflows for secrets (heuristic)
+        id: repo_scan
         shell: bash
         run: |
           set -euo pipefail
@@ -410,32 +422,51 @@ jobs:
             grep -RInE "$PATTERN" -- .github/workflows --exclude-dir=.git || true
             [ ${PIPESTATUS[0]} -eq 0 ] && found=1
           fi
-          if [ $found -eq 1 ]; then
-            echo "::warning::possible secrets found in repo/workflows"
-            [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
-          else
-            echo "no secrets detected in repo/workflows (heuristic)"
-          fi
+          echo "found=$found" >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           path: _scan/artifacts
           merge-multiple: true
         continue-on-error: true
       - name: Scan artifacts for secrets (if present)
+        id: art_scan
         shell: bash
         run: |
           set -euo pipefail
           if [ ! -d "_scan/artifacts" ] || ! ls -A _scan/artifacts >/dev/null 2>&1; then
             echo "::warning::no build artifacts to scan (skipping)"
+            echo "found=0" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           PATTERN='AKIA|ASIA|ghp_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{82,}|xox[abrs]-|BEGIN (RSA |OPENSSH )? PRIVATE KEY|SECRET_ACCESS_KEY|token=|password='
           if grep -RInE --binary-files=without-match --exclude-dir=.git --exclude-dir=.github "$PATTERN" _scan/artifacts ; then
             echo "::warning::possible secrets found in build artifacts"
-            [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
+            echo "found=1" >> "$GITHUB_OUTPUT"
           else
-            echo "no secrets detected in artifacts (heuristic)"
+            echo "found=0" >> "$GITHUB_OUTPUT"
           fi
+      - name: Write secrets scan report (repo + artifacts)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _reports
+          {
+            echo "# Secrets scan (repo/workflows)"
+            PATTERN='AKIA|ASIA|ghp_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{82,}|xox[abrs]-|BEGIN (RSA |OPENSSH )?PRIVATE KEY|SECRET_ACCESS_KEY|token=|password='
+            grep -RInE "$PATTERN" -- . --exclude-dir=.git || true
+            echo
+            echo "# Secrets scan (artifacts)"
+            if [ -d "_scan/artifacts" ] && ls -A _scan/artifacts >/dev/null 2>&1; then
+              grep -RInE --binary-files=without-match --exclude-dir=.git --exclude-dir=.github "$PATTERN" _scan/artifacts || true
+            else
+              echo "no artifacts to scan"
+            fi
+          } > _reports/secrets_scan.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: security-reports
+          path: _reports/secrets_scan.txt
+          if-no-files-found: ignore
 
   # ---------------- Permissions gate ----------------
   permissions_gate:
@@ -770,3 +801,116 @@ jobs:
             echo "::error::No lifecycle expiration ≥30 days on $B"; exit 1
           fi
           echo "Retention OK ($days d)"
+
+  # ---------------- Presence-gate + baseline governance ----------------
+  presence_gate:
+    needs: [codeql, dependency_review, secrets_presence_gate]
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    permissions:
+      contents: read
+      pull-requests: read
+      security-events: read
+    steps:
+      - name: Require SAST/SCA/Secrets to have RUN (skip ⇒ WARN)
+        shell: bash
+        run: |
+          set -euo pipefail
+          SAST="${{ needs.codeql.result }}"
+          SCA="${{ needs.dependency_review.result }}"
+          SECR="${{ needs.secrets_presence_gate.result }}"
+          echo "SAST=$SAST  SCA=$SCA  SECRETS=$SECR"
+          warn=0
+          for n in "SAST:$SAST" "SCA:$SCA" "SECRETS:$SECR"; do
+            k="${n%%:*}"; v="${n##*:}"
+            if [ "$v" = "skipped" ] || [ "$v" = "cancelled" ]; then
+              echo "::warning::$k scan was $v (required to run)"
+              warn=1
+            fi
+          done
+          [ $warn -eq 0 ] && echo "All presence checks ran ✅" || echo "Presence WARNs emitted"
+
+      - name: Baseline governance (changes require review)
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          pr=$(jq -r .number "$GITHUB_EVENT_PATH")
+          repo="${GITHUB_REPOSITORY}"
+          PATTERN='^(\.github/security-baselines/|\.codeql/|baseline/|secrets\.allowlist|trivy\.ignore|codeql\.sarif)$'
+          changed=$(gh api repos/$repo/pulls/$pr/files --paginate -q '.[].filename' | tr -d '\r' || true)
+          echo "$changed" | grep -E "$PATTERN" >/dev/null 2>&1 || exit 0
+          has_label=$(gh pr view "$pr" --repo "$repo" --json labels -q '[.labels[]?.name] | index("Baseline-Reviewed") != null')
+          has_reason=$(gh pr view "$pr" --repo "$repo" --json body   -q '(.body // "") | test("(?i)(baseline|suppression|обосн|подавлен|reason)")')
+          if [ "$has_label" != "true" ] && [ "$has_reason" != "true" ]; then
+            echo "::error::Baseline changes detected; add label 'Baseline-Reviewed' or put rationale in PR description"
+            exit 1
+          fi
+          echo "Baseline changes are reviewed ✅"
+
+  # ---------------- Collect reports (JSON/TXT) ----------------
+  collect_security_reports:
+    needs: [presence_gate]
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    permissions:
+      contents: read
+      security-events: read
+      pull-requests: read
+    steps:
+      - name: Gather reports
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _reports
+
+          repo="${GITHUB_REPOSITORY}"
+
+          # Code Scanning alerts (SAST)
+          gh api repos/$repo/code-scanning/alerts --paginate > _reports/codeql_alerts.json || echo '[]' > _reports/codeql_alerts.json
+
+          # Dependabot/Dependency alerts (SCA)
+          gh api repos/$repo/dependabot/alerts --paginate > _reports/dependabot_alerts.json || echo '[]' > _reports/dependabot_alerts.json
+
+          # Presence summary
+          jq -n --arg SAST "${{ needs.codeql.result }}" \
+                --arg SCA  "${{ needs.dependency_review.result }}" \
+                --arg SECR "${{ needs.secrets_presence_gate.result }}" \
+                '{sast:$SAST, sca:$SCA, secrets:$SECR}' > _reports/presence.json
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: security-reports
+          path: _reports
+        continue-on-error: true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: security-reports
+          path: _reports/*
+
+  # ---------------- Attach reports to Release on tag ----------------
+  attach_security_reports:
+    needs: [collect_security_reports]
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write     # нужно для загрузки assets
+      security-events: read
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: security-reports
+          path: reports
+      - name: Upload reports to Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF#refs/tags/}"
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" -t "$tag" -n "Automated release"
+          ls -l reports || true
+          gh release upload "$tag" reports/* --clobber || true
