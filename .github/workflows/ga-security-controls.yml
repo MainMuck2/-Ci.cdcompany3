@@ -15,12 +15,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# минимальные глобальные права (safe-by-default)
 permissions:
   contents: read
-  security-events: write
-  packages: read
-  id-token: write
-  attestations: write
 
 env:
   ENFORCEMENT: ${{ github.ref_name == github.event.repository.default_branch && 'block' || 'warn' }}
@@ -29,6 +26,10 @@ env:
 jobs:
   # ---------------- SAST / SCA presence ----------------
   codeql:
+    # нужно отправлять security-алерты
+    permissions:
+      contents: read
+      security-events: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
@@ -78,8 +79,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo curl -fsSL -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64
-          sudo chmod +x /usr/local/bin/yq
+          # yq с проверкой подписи (checksum)
+          VER_YQ="v4.44.3"
+          curl -fsSL -o /tmp/yq https://github.com/mikefarah/yq/releases/download/${VER_YQ}/yq_linux_amd64
+          curl -fsSL -o /tmp/checksums https://github.com/mikefarah/yq/releases/download/${VER_YQ}/checksums
+          (cd /tmp && grep " yq_linux_amd64$" checksums | sha256sum -c -)
+          sudo install -m0755 /tmp/yq /usr/local/bin/yq
+
           status=0
           mapfile -t WF < <(git ls-files '.github/workflows/*.y*ml' 2>/dev/null || true)
           for f in "${WF[@]}"; do
@@ -97,6 +103,10 @@ jobs:
   build_and_attest:
     needs: [codeql, dependency_review, verify_action_publishers]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -111,10 +121,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Установка syft с проверкой checksum
           VER="v1.33.0"
-          curl -fsSL -o syft.tgz https://github.com/anchore/syft/releases/download/${VER}/syft_${VER#v}_linux_amd64.tar.gz || \
-          curl -fsSL -o syft.tgz https://github.com/anchore/syft/releases/download/${VER}/syft_Linux_x86_64.tar.gz
-          tar -xzf syft.tgz syft && sudo install -m0755 syft /usr/local/bin/syft
+          FN="syft_${VER#v}_linux_amd64.tar.gz"
+          URL="https://github.com/anchore/syft/releases/download/${VER}/${FN}"
+          ALT_FN="syft_Linux_x86_64.tar.gz"
+          ALT_URL="https://github.com/anchore/syft/releases/download/${VER}/${ALT_FN}"
+          if ! curl -fsSL -o "/tmp/${FN}" "$URL"; then
+            FN="${ALT_FN}"
+            curl -fsSL -o "/tmp/${FN}" "$ALT_URL"
+          fi
+          curl -fsSL -o /tmp/sha.txt https://github.com/anchore/syft/releases/download/${VER}/checksums.txt || \
+          curl -fsSL -o /tmp/sha.txt https://github.com/anchore/syft/releases/download/${VER}/syft_${VER#v}_checksums.txt
+          (cd /tmp && grep " ${FN}$" sha.txt | sha256sum -c -)
+          tar -xzf "/tmp/${FN}" -C /tmp syft
+          sudo install -m0755 /tmp/syft /usr/local/bin/syft
+
+          # Генерация SBOM
           syft "file:artifact.txt" -o spdx-json=sbom.spdx.json
           D=$(sha256sum artifact.txt | awk '{print $1}')
           jq --arg d "$D" '.files=((.files // [])|map(select(.fileName!="artifact.txt")))+
@@ -149,8 +172,11 @@ jobs:
         run: |
           set -euo pipefail
           if ! gh attestation --help >/dev/null 2>&1; then
-            gh extension install github/gh-attestation
+            gh extension install github/gh-attestation@v0.1.0
           fi
+          # убеждаемся, что зафиксированная версия
+          gh extension list | grep -E '^gh-attestation\s' | grep 'v0\.1\.0' >/dev/null || { echo "::error::gh-attestation must be v0.1.0"; exit 1; }
+
           WF="${GITHUB_WORKFLOW_REF}"
           REPO="${GITHUB_REPOSITORY}"
           echo "Verifying signer-workflow=${WF}"
@@ -446,11 +472,14 @@ jobs:
   audit_streaming_guard:
     if: ${{ vars.AUDIT_BUCKET != '' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ vars.AUDIT_BUCKET != '' && vars.AWS_ROLE_ARN || '' }}
+          aws-region: ${{ vars.AUDIT_BUCKET != '' && vars.AWS_REGION || '' }}
           role-duration-seconds: 900
           audience: sts.amazonaws.com
           role-session-name: gha-${{ github.run_id }}-${{ github.run_attempt }}
@@ -519,6 +548,9 @@ jobs:
     needs: [access_recert_gate, build_and_attest, trust_store_guard, kms_sign_and_verify, sbom_enforce, verify_action_publishers]
     if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Enforce release-only refs
         shell: bash
