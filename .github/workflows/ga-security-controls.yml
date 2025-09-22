@@ -1,0 +1,959 @@
+name: Security Framework Gates
+
+on:
+  push:
+    branches: ["main", "release/*"]
+    tags: ["v*"]
+  pull_request:
+    branches: ["main", "release/*"]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *" # каждые 6 часов авто-синк trust-store (org → repo)
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write
+  packages: read
+  id-token: write
+  attestations: write
+
+env:
+  ENFORCEMENT: ${{ github.ref_name == github.event.repository.default_branch && 'block' || 'warn' }}
+  CAN_ATTEST: ${{ (github.event_name == 'push') || (github.event_name == 'workflow_dispatch') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
+
+jobs:
+  # ---------------- SAST / SCA presence ----------------
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:      # минимально-необходимые для CodeQL
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - uses: github/codeql-action/init@192325c86100d080feab897ff886c34abd4c83a3
+        with:
+          languages: "actions, javascript, python"
+      - uses: github/codeql-action/analyze@192325c86100d080feab897ff886c34abd4c83a3
+
+  dependency_review:
+    runs-on: ubuntu-latest
+    permissions:      # read-only
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - name: Compute base/head refs
+        id: deprefs
+        shell: bash
+        run: |
+          set -euo pipefail
+          HEAD_SHA="${GITHUB_SHA}"
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            BEFORE="$(jq -r .before "$GITHUB_EVENT_PATH")"
+            if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+              echo "base=$BEFORE" >> "$GITHUB_OUTPUT"
+            else
+              git fetch --no-tags --prune --depth=2 origin "${GITHUB_REF}"
+              echo "base=$(git rev-parse "${HEAD_SHA}^" 2>/dev/null || echo '')" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "base=$(jq -r .pull_request.base.sha "$GITHUB_EVENT_PATH")" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/dependency-review-action@595b5aeba73380359d98a5e087f648dbb0edce1b
+        if: steps.deprefs.outputs.base != ''
+        with:
+          base-ref: ${{ steps.deprefs.outputs.base }}
+          head-ref: ${{ github.sha }}
+          fail-on-severity: critical
+        continue-on-error: ${{ env.ENFORCEMENT != 'block' }}
+
+  # --------------- Verify action publishers (allow-list + pin) ---------------
+  verify_action_publishers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - name: Verify publishers + pin to commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ALLOW_OWNERS: actions,github,dependabot,aws-actions,google-github-actions,azure
+          # версионки/дайджесты берем из repo variables, с дефолтами
+          YQ_VER: ${{ vars.YQ_VERSION }}
+          YQ_SHA512: ${{ vars.YQ_SHA512 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # --- yq: pin + checksum verify (SHA-512) ---
+          YQ_VERSION="${YQ_VER:-v4.44.3}"
+          if [ -n "${YQ_SHA512:-}" ]; then
+            sudo curl -fsSL -L -o /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+            echo "${YQ_SHA512}  /usr/local/bin/yq" | sha512sum -c -
+            sudo chmod +x /usr/local/bin/yq
+          else
+            sudo curl -fsSL -o /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+            sudo chmod +x /usr/local/bin/yq
+            echo "::warning::YQ_SHA512 repo variable not set — checksum for yq not verified"
+          fi
+
+          status=0
+          mapfile -t WF < <(git ls-files '.github/workflows/*.y*ml' 2>/dev/null || true)
+          for f in "${WF[@]}"; do
+            while read -r owner repo ref; do
+              [ -z "$owner" ] && continue
+              case ",$ALLOW_OWNERS," in *,"$owner",*) ;; *) echo "::warning file=$f::owner '$owner' not in allow-list"; status=1;; esac
+              [[ "$ref" =~ ^[0-9a-f]{40}$ ]] || { echo "::warning file=$f::'$owner/$repo@$ref' not pinned to full SHA"; status=1; }
+              data=$(gh api "repos/$owner/$repo" -H "Accept: application/vnd.github+json" || true)
+              [ "$(jq -r 'try .owner.is_verified // false' <<<"$data")" = "true" ] || { echo "::warning file=$f::owner '$owner' not verified"; status=1; }
+            done < <(yq -r '.. | .uses? | select(type=="string")' "$f" | awk -F'[@/]' '{ if (NF>=3) printf "%s %s %s\n",$1,$2,$NF }')
+          done
+          [ $status -eq 0 ] || { [ "${ENFORCEMENT}" = "block" ] && exit 1 || true; }
+
+  # ---------------- Build + SBOM + Attest ----------------
+  build_and_attest:
+    needs: [codeql, dependency_review, verify_action_publishers]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      attestations: write
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SYFT_VER: ${{ vars.SYFT_VERSION }}
+      SYFT_TGZ_SHA256: ${{ vars.SYFT_TGZ_SHA256 }}
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+
+      - name: Build artifact
+        run: |
+          echo "hello $(date -u +%FT%TZ)" > artifact.txt
+          sha256sum artifact.txt | tee checksums.txt
+
+      - name: Export SBOM (Syft)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # --- syft: pin + checksum verify (SHA-256) ---
+          VER="${SYFT_VER:-v1.33.0}"
+          curl -fsSL -o syft.tgz "https://github.com/anchore/syft/releases/download/${VER}/syft_${VER#v}_linux_amd64.tar.gz" || \
+          curl -fsSL -o syft.tgz "https://github.com/anchore/syft/releases/download/${VER}/syft_Linux_x86_64.tar.gz"
+          if [ -n "${SYFT_TGZ_SHA256:-}" ]; then
+            echo "${SYFT_TGZ_SHA256}  syft.tgz" | sha256sum -c -
+          else
+            echo "::warning::SYFT_TGZ_SHA256 repo variable not set — checksum for syft.tgz not verified"
+          fi
+          tar -xzf syft.tgz syft && sudo install -m0755 syft /usr/local/bin/syft
+
+          syft "file:artifact.txt" -o spdx-json=sbom.spdx.json
+          D=$(sha256sum artifact.txt | awk '{print $1}')
+          jq --arg d "$D" '.files=((.files // [])|map(select(.fileName!="artifact.txt")))+
+             [{"fileName":"artifact.txt","SPDXID":"SPDXRef-File-artifact.txt","checksums":[{"algorithm":"SHA256","checksumValue":$d}]}]' \
+             sbom.spdx.json > t && mv t sbom.spdx.json
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: build
+          path: |
+            artifact.txt
+            checksums.txt
+            sbom.spdx.json
+
+      - name: Attest provenance
+        if: env.CAN_ATTEST == 'true'
+        uses: actions/attest-build-provenance@ef244123eb79f2f7a7e75d99086184180e6d0018
+        with:
+          subject-path: artifact.txt
+
+      - name: Attest SBOM
+        if: env.CAN_ATTEST == 'true'
+        uses: actions/attest-sbom@5026d3663739160db546203eeaffa6aa1c51a4d6
+        with:
+          subject-path: artifact.txt
+          sbom-path: sbom.spdx.json
+
+      - name: Verify attestations
+        if: env.CAN_ATTEST == 'true'
+        env:
+          GH_TOKEN: ${{ env.GH_TOKEN }}
+        run: |
+          set -euo pipefail
+          if ! gh attestation --help >/dev/null 2>&1; then
+            gh extension install github/gh-attestation
+          fi
+          WF="${GITHUB_WORKFLOW_REF}"
+          REPO="${GITHUB_REPOSITORY}"
+          echo "Verifying signer-workflow=${WF}"
+
+          successes=0
+          failures=0
+          for PT in "https://slsa.dev/provenance/v1" "https://spdx.dev/Document"; do
+            echo "Trying predicate: ${PT}"
+            verified=0
+            for i in $(seq 1 8); do
+              if gh attestation verify artifact.txt \
+                    --repo "${REPO}" \
+                    --predicate-type "${PT}" \
+                    --cert-oidc-issuer "https://token.actions.githubusercontent.com" \
+                    --signer-workflow "${WF}" \
+                    --deny-self-hosted-runners --limit 50; then
+                echo "✓ Verified ${PT}"
+                verified=1
+                break
+              fi
+              sleep 10
+            done
+            if [ $verified -eq 1 ]; then
+              successes=$((successes+1))
+            else
+              echo "::warning::verify failed for ${PT}"
+              failures=$((failures+1))
+            fi
+          done
+
+          [ $failures -eq 0 ] || { [ "${ENFORCEMENT}" = "block" ] && exit 1 || true; }
+
+  # ---------------- Trust-store (JWKS / allowed_signers / revocations) ----------------
+  trust_store_guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - name: Load org trust-store (if set)
+        id: t
+        shell: bash
+        env:
+          ORG_TRUST_REPO: ${{ vars.ORG_TRUST_REPO }}
+          GH_TOKEN: ${{ secrets.ORG_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p .github/trust
+          if [ -n "${ORG_TRUST_REPO:-}" ]; then
+            gh repo clone "$ORG_TRUST_REPO" _orgtrust -- -q || true
+            if [ -f _orgtrust/.github/trust/publishers.jwks.json ]; then
+              cp -r _orgtrust/.github/trust/* .github/trust/ || true
+              echo "source=org" >> "$GITHUB_OUTPUT"
+            else
+              echo "source=local" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "source=local" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Validate trust-store files
+        env:
+          AWS_KMS_KEY_ID: ${{ vars.AWS_KMS_KEY_ID }}
+        run: |
+          set -euo pipefail
+          test -f .github/trust/publishers.jwks.json || { echo "::error::JWKS missing"; exit 1; }
+          jq -e '.keys|length>0' .github/trust/publishers.jwks.json >/dev/null
+          test -f .github/trust/allowed_signers.json || { echo "::error::allowed_signers.json missing"; exit 1; }
+          test -f .github/trust/revocations.json || { echo "::group::revocations.json missing -> treat as empty"; echo '{"kids":[]}' > .github/trust/revocations.json; echo "::endgroup::"; }
+          if [ -n "${AWS_KMS_KEY_ID:-}" ]; then
+            K="AWS:${AWS_KMS_KEY_ID}"
+            jq -r '.keys[].kid' .github/trust/publishers.jwks.json | grep -Fx "$K" >/dev/null || {
+              echo "::warning::KID mismatch (expected $K)"; [ "${ENFORCEMENT}" = "block" ] && exit 1 || true; }
+          fi
+
+  # ---------------- Access recertification gate (BLOCK on expiry) ----------------
+  access_recert_gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - name: Block if any group recert is expired
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .github/trust/access_catalog.json || { echo "::error::missing .github/trust/access_catalog.json"; exit 1; }
+          NOW=$(date -u +%F)
+          EXPIRED=$(jq -r --arg NOW "$NOW" '.groups[] | select(.recert_expires_at < $NOW) | .name' .github/trust/access_catalog.json)
+          if [ -n "$EXPIRED" ]; then
+            echo "::error::Access recert expired for groups:"
+            echo "$EXPIRED" | sed 's/^/- /'
+            exit 1
+          fi
+          echo "Access recert OK as of $NOW"
+
+  # ---------------- KMS sign + verify ----------------
+  kms_sign_and_verify:
+    needs: [build_and_attest, trust_store_guard]
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ github.ref_name != github.event.repository.default_branch }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+
+      - name: Decide if AWS steps are allowed for this ref
+        id: gate
+        shell: bash
+        run: |
+          case "${GITHUB_REF}" in
+            refs/heads/main|refs/heads/release/*|refs/tags/v*) echo "aws=yes"  >> "$GITHUB_OUTPUT" ;;
+            *)                                               echo "aws=no"   >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Debug OIDC claims
+        if: steps.gate.outputs.aws == 'yes'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          tok=$(curl -sS -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+                      "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" | jq -r .value || true)
+          if [ -z "${tok:-}" ] || [ "${tok:-null}" = "null" ]; then
+            echo "::notice::OIDC token not available (this can be normal for some triggers)"
+            exit 0
+          fi
+          body=$(echo "$tok" | awk -F. '{print $2}' | base64 -d 2>/dev/null || true)
+          echo "repository: $(jq -r 'try .repository     // empty' <<<"$body")"
+          echo "ref:        $(jq -r 'try .ref            // empty' <<<"$body")"
+          echo "workflow:   $(jq -r 'try .job_workflow_ref // empty' <<<"$body")"
+          echo "sub:        $(jq -r 'try .sub           // empty' <<<"$body")"
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: build
+
+      - name: Configure AWS (OIDC assume role)
+        if: steps.gate.outputs.aws == 'yes'
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-duration-seconds: 900
+          audience: sts.amazonaws.com
+          role-session-name: gha-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: KMS Sign artifact.txt (PS256)
+        if: steps.gate.outputs.aws == 'yes'
+        run: |
+          set -euo pipefail
+          aws kms sign --key-id "${{ vars.AWS_KMS_KEY_ID }}" \
+            --signing-algorithm RSASSA_PSS_SHA_256 --message-type RAW \
+            --message fileb://artifact.txt --query Signature --output text | base64 -d > artifact.sig
+
+      - name: Fetch public key & verify
+        if: steps.gate.outputs.aws == 'yes'
+        run: |
+          set -euo pipefail
+          aws kms get-public-key --key-id "${{ vars.AWS_KMS_KEY_ID }}" \
+            --query PublicKey --output text | base64 -d > aws-pub.der
+          openssl pkey -pubin -inform DER -in aws-pub.der -out aws-pub.pem
+          openssl dgst -sha256 -verify aws-pub.pem -signature artifact.sig \
+            -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:digest -sigopt rsa_mgf1_md:sha256 artifact.txt
+
+      - name: AWS steps skipped for this ref
+        if: steps.gate.outputs.aws != 'yes'
+        run: |
+          echo "::notice::Skipping AWS assume/sign (ref '${GITHUB_REF}' is not main/release/*/tags v*)"
+
+      - name: Trust-store check for signer (warn)
+        if: steps.gate.outputs.aws == 'yes'
+        shell: bash
+        env:
+          KID: AWS:${{ vars.AWS_KMS_KEY_ID }}
+          ENF: ${{ env.ENFORCEMENT }}
+        run: |
+          set -euo pipefail
+          ok=0
+          test -f .github/trust/publishers.jwks.json && \
+            jq -e --arg k "$KID" '.keys[]?|.kid==$k' .github/trust/publishers.jwks.json >/dev/null && ok=1
+          revoked=0
+          test -f .github/trust/revocations.json && \
+            jq -e --arg k "$KID" '.kids[]?|.==$k' .github/trust/revocations.json >/dev/null && revoked=1 || true
+          if [ $ok -ne 1 ]; then
+            echo "::warning::Signer $KID is NOT in publishers.jwks.json"
+            [ "${ENF}" = "block" ] && exit 1 || true
+          fi
+          if [ $revoked -eq 1 ]; then
+            echo "::warning::Signer $KID is REVOKED in revocations.json"
+            [ "${ENF}" = "block" ] && exit 1 || true
+          fi
+
+      - name: Save signing evidence
+        if: steps.gate.outputs.aws == 'yes'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: signing-evidence
+          path: |
+            artifact.txt
+            artifact.sig
+            aws-pub.pem
+            checksums.txt
+
+  # ---------------- SBOM enforce ----------------
+  sbom_enforce:
+    needs: [build_and_attest]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: build
+      - name: Enforce SBOM digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          A=$(sha256sum artifact.txt | awk '{print $1}')
+          S=$(jq -r '.files[]?|select(.fileName=="artifact.txt")|.checksums[]?|select(.algorithm=="SHA256")|.checksumValue' sbom.spdx.json | head -n1)
+          [ -n "$S" ] && [ "$A" = "$S" ] && echo "SBOM OK" || {
+            echo "::warning::SBOM mismatch/missing (artifact=$A, sbom=$S)";
+            [ "${ENFORCEMENT}" = "block" ] && exit 1 || true; }
+
+  # ---------------- Secrets presence gate (source + workflows + artifacts) ----------------
+  secrets_presence_gate:
+    needs: [build_and_attest]
+    runs-on: ubuntu-latest
+    permissions:      # read-only
+      contents: read
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - name: Scan repo & workflows for secrets (heuristic)
+        id: repo_scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATTERN='AKIA|ASIA|ghp_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{82,}|xox[abrs]-|BEGIN (RSA |OPENSSH )?PRIVATE KEY|SECRET_ACCESS_KEY|token=|password='
+          found=0
+          grep -RInE "$PATTERN" -- . --exclude-dir=.git || true
+          [ ${PIPESTATUS[0]} -eq 0 ] && found=1
+          if [ -d .github/workflows ]; then
+            grep -RInE "$PATTERN" -- .github/workflows --exclude-dir=.git || true
+            [ ${PIPESTATUS[0]} -eq 0 ] && found=1
+          fi
+          echo "found=$found" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          path: _scan/artifacts
+          merge-multiple: true
+        continue-on-error: true
+      - name: Scan artifacts for secrets (if present)
+        id: art_scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -d "_scan/artifacts" ] || ! ls -A _scan/artifacts >/dev/null 2>&1; then
+            echo "::warning::no build artifacts to scan (skipping)"
+            echo "found=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          PATTERN='AKIA|ASIA|ghp_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{82,}|xox[abrs]-|BEGIN (RSA |OPENSSH )? PRIVATE KEY|SECRET_ACCESS_KEY|token=|password='
+          if grep -RInE --binary-files=without-match --exclude-dir=.git --exclude-dir=.github "$PATTERN" _scan/artifacts ; then
+            echo "::warning::possible secrets found in build artifacts"
+            echo "found=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=0" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Write secrets scan report (repo + artifacts)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _reports
+          {
+            echo "# Secrets scan (repo/workflows)"
+            PATTERN='AKIA|ASIA|ghp_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{82,}|xox[abrs]-|BEGIN (RSA |OPENSSH )?PRIVATE KEY|SECRET_ACCESS_KEY|token=|password='
+            grep -RInE "$PATTERN" -- . --exclude-dir=.git || true
+            echo
+            echo "# Secrets scan (artifacts)"
+            if [ -d "_scan/artifacts" ] && ls -A _scan/artifacts >/dev/null 2>&1; then
+              grep -RInE --binary-files=without-match --exclude-dir=.git --exclude-dir=.github "$PATTERN" _scan/artifacts || true
+            else
+              echo "no artifacts to scan"
+            fi
+          } > _reports/secrets_scan.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: security-reports
+          path: _reports/secrets_scan.txt
+          if-no-files-found: ignore
+
+  # ---------------- Permissions gate ----------------
+  permissions_gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - name: Lint permissions (deny dangerous writes)
+        run: |
+          set -euo pipefail
+          bad=$(grep -RInE 'permissions:\s*(write-all|{[^}]*: *write[^}]*})' .github/workflows || true)
+          if [ -n "$bad" ]; then
+            echo "$bad"
+            echo "::warning::dangerous token permissions found"; [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
+          else
+            echo "permissions OK"
+          fi
+      - name: Deny interactive signing patterns
+        shell: bash
+        run: |
+          set -euo pipefail
+          bad=$(grep -RInE '\bgpg(\.exe)?\b.*\b(--sign|-s)\b|openssl .* -passin +(pass:|env:|file:|-)|ssh-keygen .* -P( |$)' -- . ':!**/.git/**' 2>/dev/null || true)
+          if [ -n "$bad" ]; then
+            echo "::error::interactive signing patterns found"
+            echo "$bad"
+            exit 1
+          fi
+
+  # ---------------- Audit streaming guard (S3) ----------------
+  audit_streaming_guard:
+    if: ${{ vars.AUDIT_BUCKET != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-duration-seconds: 900
+          audience: sts.amazonaws.com
+          role-session-name: gha-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Check bucket exists
+        env:
+          B: ${{ vars.AUDIT_BUCKET }}
+        run: |
+          set -euo pipefail
+          aws s3api head-bucket --bucket "$B" || { echo "::error::Bucket $B not found"; exit 1; }
+          aws s3api get-bucket-location --bucket "$B" --output json || true
+      - name: Saw audit objects in last 7d
+        env:
+          B: ${{ vars.AUDIT_BUCKET }}
+          P: ${{ vars.AUDIT_PREFIX }}
+        run: |
+          set -euo pipefail
+          since=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          aws s3api list-objects-v2 --bucket "$B" --prefix "${P:-}" --query \
+            "Contents[?LastModified>=\`$since\`][].{Key:Key,LastModified:LastModified}" \
+            --output json | jq -e 'length>0' >/dev/null || {
+              echo "::warning::no audit objects in last 7d"; [ "${ENFORCEMENT}" = "block" ] && exit 1 || true; }
+      - name: Summarize recent audit objects (CI/CD categories)
+        env:
+          B: ${{ vars.AUDIT_BUCKET }}
+          P: ${{ vars.AUDIT_PREFIX }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Возьмём до 100 самых свежих ключей и аккуратно распарсим
+          KEYS_JSON=$(aws s3api list-objects-v2 --bucket "$B" --prefix "${P:-}" \
+            --query 'reverse(sort_by(Contents,&LastModified))[:100].Key' --output json)
+          mapfile -t KEYS < <(jq -r '.[]?' <<<"$KEYS_JSON")
+          if [ ${#KEYS[@]} -eq 0 ]; then
+            echo "::notice::bucket empty"
+            exit 0
+          fi
+
+          tmp_all="$(mktemp)"
+          fetched=0
+          for k in "${KEYS[@]}"; do
+            # Проверяем наличие, скачиваем и распаковываем
+            if ! aws s3api head-object --bucket "$B" --key "$k" >/dev/null 2>&1; then
+              echo "::notice::skip missing/deleted object: $k"
+              continue
+            fi
+            if aws s3 cp "s3://$B/$k" - 2>/dev/null | gzip -dc 2>/dev/null >>"$tmp_all"; then
+              echo "::notice::parsed $k"
+              fetched=1
+            fi
+          done
+
+          if [ $fetched -eq 0 ]; then
+            echo "::notice::could not read any of the recent objects (eventual consistency/permissions?)"
+            exit 0
+          fi
+
+          total=$(wc -l < "$tmp_all" || echo 0)
+          echo "Total events parsed: $total"
+
+          acts="$(mktemp)"
+          jq -r '.action // empty' "$tmp_all" > "$acts" || true
+
+          echo "Top action categories (prefix):"
+          awk -F'[._]' 'NF{print $1}' "$acts" | sort | uniq -c | sort -nr | head -n 20 | sed 's/^/  /'
+
+          # Считаем CI/CD-метрики для аудита
+          ci=$(grep -Ec '^(workflows\.|artifact\.|repo\.|repository_|checks\.|environment\.)' "$acts" || true)
+          if [ "$ci" -gt 0 ]; then
+            echo "✓ Found ${ci} CI/CD audit events (workflows/artifact/repo/checks/environment)."
+          else
+            echo "::notice::no CI/CD audit events among the last ${#KEYS[@]} objects (может быть тихий период)."
+          fi
+      - name: Lifecycle retention ≥30d
+        env:
+          B: ${{ vars.AUDIT_BUCKET }}
+        run: |
+          set -euo pipefail
+          lc=$(aws s3api get-bucket-lifecycle-configuration --bucket "$B" 2>/dev/null || echo "")
+          days=$(jq -r '[.Rules[]?.Expiration?.Days // empty] | max // 0' <<<"$lc")
+          if [ "${days:-0}" -lt 30 ]; then
+            echo "::warning::No lifecycle expiration ≥30d on $B"; [ "${ENFORCEMENT}" = "block" ] && exit 1 || true
+          else
+            echo "Retention OK (${days}d)"
+          fi
+
+  # ---------------- Rerun guard (best-effort dual-control) ----------------
+  rerun_guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Block rerun without explicit approval (PR only)
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          ATTEMPT: ${{ github.run_attempt }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "${ATTEMPT:-1}" -gt 1 ]; then
+            pr=$(jq -r .number "$GITHUB_EVENT_PATH")
+            labels=$(gh pr view "$pr" --json labels -q '.labels[].name' | tr '\n' ' ')
+            echo "$labels" | grep -q 'Re-Run-Approved' || {
+              echo "::warning::Rerun needs label Re-Run-Approved"; [ "${ENFORCEMENT}" = "block" ] && exit 1 || true; }
+          else
+            echo "first attempt -> OK"
+          fi
+
+  # ---------------- Release-only gate + trust-store verify for deploy ----------------
+  prod_release_gate:
+    needs: [access_recert_gate, build_and_attest, trust_store_guard, kms_sign_and_verify, sbom_enforce, verify_action_publishers]
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce release-only refs
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${GITHUB_REF}" in refs/heads/main|refs/heads/release/*|refs/tags/v*) ;; *)
+            echo "::error::Deploy allowed only from main/release/*/v*"; exit 1;; esac
+      - name: Check key revocations
+        run: |
+          set -euo pipefail
+          test -f .github/trust/revocations.json || { echo "no revocations.json -> OK"; exit 0; }
+          KID="AWS:${{ vars.AWS_KMS_KEY_ID }}"
+          jq -r '.kids[]?' .github/trust/revocations.json | grep -Fx "$KID" && {
+            echo "::error::Key revoked ($KID)"; exit 1; } || echo "KID not revoked"
+      - name: Enforce signer present in JWKS (unknown ⇒ block)
+        shell: bash
+        env:
+          KID: AWS:${{ vars.AWS_KMS_KEY_ID }}
+        run: |
+          set -euo pipefail
+          test -f .github/trust/publishers.jwks.json || { echo "::error::missing .github/trust/publishers.jwks.json"; exit 1; }
+          jq -e --arg k "$KID" '.keys[]?|.kid==$k' .github/trust/publishers.jwks.json >/dev/null || { echo "::error::unknown signer $KID (not in .github/trust/publishers.jwks.json)"; exit 1; }
+      - name: Verify OIDC claims + allowed_signers
+        shell: bash
+        run: |
+          set -euo pipefail
+          tok=$(curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" | jq -r .value)
+          test -n "$tok"
+          body=$(echo "$tok" | awk -F. '{print $2}' | base64 -d 2>/dev/null)
+          repo=$(jq -r .repository <<<"$body")
+          ref=$(jq -r .ref <<<"$body")
+          wf=$(jq -r .job_workflow_ref <<<"$body")
+          [ "$repo" = "${GITHUB_REPOSITORY}" ] || { echo "::error::OIDC repo mismatch"; exit 1; }
+          echo "$ref" | grep -Eq '^refs/(heads/(main|release/.*)|tags/v.*)$' || { echo "::error::OIDC ref not allowed"; exit 1; }
+          jq -r '.[]?' .github/trust/allowed_signers.json | grep -Fx "$wf" >/dev/null || { echo "::error::workflow not in allowed_signers"; exit 1; }
+
+  # ---------------- Promote to Production ----------------
+  promote_to_prod:
+    needs: [prod_release_gate]
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    concurrency:
+      group: deploy-${{ github.ref_name }}
+      cancel-in-progress: true
+    steps:
+      - run: echo "All upstream gates passed. Waiting for env approval…"
+
+  # ---------------- Rollback to Production (dual-auth via environment) ----------------
+  rollback_to_prod:
+    needs: [prod_release_gate, access_recert_gate]
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - run: echo "Manual rollback to production requested. Waiting for environment approval..."
+      # TODO: реальные шаги отката
+
+  # ---------------- Admin operations (dual-auth via admin-ops environment) ----------------
+  secrets_kms_admin:
+    needs: [access_recert_gate]
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: admin-ops
+    steps:
+      - run: echo "Admin operation on secrets/KMS. Waiting for environment approval..."
+  rbac_admin:
+    needs: [access_recert_gate]
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: admin-ops
+    steps:
+      - run: echo "Admin operation on RBAC/permissions. Waiting for environment approval..."
+  trust_runners_admin:
+    needs: [access_recert_gate]
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: admin-ops
+    steps:
+      - run: echo "Admin operation on trusted/registration runners. Waiting for environment approval..."
+
+  # ---------------- Trust-store auto-rotation ----------------
+  trust_store_rotate:
+    if: ${{ github.event_name == 'schedule' && vars.ORG_TRUST_REPO != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - name: Pull org trust-store
+        env:
+          ORG_TRUST_REPO: ${{ vars.ORG_TRUST_REPO }}
+          GH_TOKEN: ${{ secrets.ORG_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          rm -hf _orgtrust || true
+          rm -rf _orgtrust
+          gh repo clone "$ORG_TRUST_REPO" _orgtrust -- -q
+          test -d _orgtrust/.github/trust || { echo "no .github/trust in $ORG_TRUST_REPO"; exit 0; }
+          mkdir -p .github/trust
+          cp -a _orgtrust/.github/trust/. .github/trust/
+      - name: Detect changes
+        id: diff
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          BR="chore/rotate-trust-store-$(date -u +%Y%m%d%H%M%S)"
+          git checkout -b "$BR"
+          git add .github/trust
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            git commit -m "chore(trust-store): sync from ${{ vars.ORG_TRUST_REPO }}"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "branch=$BR" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Open PR
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh pr create \
+            --title "chore(trust-store): sync org trust-store" \
+            --body "Automated sync of .github/trust from \`${{ vars.ORG_TRUST_REPO }}\`" \
+            --base "main" || true
+
+  # ---------------- Policy-as-code: PR must have review + reason ----------------
+  pr_policy_gate:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      contents: read
+    steps:
+      - name: Require ≥1 APPROVED review and change reason
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          pr=$(jq -r .number "$GITHUB_EVENT_PATH")
+          repo="${GITHUB_REPOSITORY}"
+
+          approved=$(gh pr view "$pr" --repo "$repo" --json reviews -q \
+            '[.reviews[]?|select(.state=="APPROVED")] | length')
+          if [ "${approved:-0}" -lt 1 ]; then
+            echo "::error::Need at least 1 APPROVED review"; exit 1
+          fi
+
+          has_label=$(gh pr view "$pr" --repo "$repo" --json labels -q \
+            '[.labels[]?.name] | index("Change-Reason") != null')
+          has_reason=$(gh pr view "$pr" --repo "$repo" --json body -q \
+            '(.body // "") | test("(?i)(baseline|suppression|обосн|подавлен|reason)")')
+          if [ "$has_label" != "true" ] && [ "$has_reason" != "true" ]; then
+            echo "::error::Provide change reason (label Change-Reason or reason in PR body)"; exit 1
+          fi
+
+          echo "Policy OK"
+
+  # ---------------- Policy-as-code: pushes to protected branches from approved PR only ----------------
+  push_pr_only_gate:
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      contents: read
+    steps:
+      - name: Enforce PR-only for protected branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${GITHUB_REF}" in
+            refs/heads/main|refs/heads/release/*) ;;
+            *) echo "non-protected ref -> OK"; exit 0;;
+          esac
+
+          repo="${GITHUB_REPOSITORY}"
+
+          prs=$(gh api repos/${repo}/commits/${GITHUB_SHA}/pulls -q 'length')
+          if [ "${prs:-0}" -lt 1 ]; then
+            echo "::error::Commit not associated with a PR"; exit 1
+          fi
+          pr=$(gh api repos/${repo}/commits/${GITHUB_SHA}/pulls -q '.[0].number')
+
+          approved=$(gh pr view "$pr" --repo "$repo" --json reviews -q \
+            '[.reviews[]?|select(.state=="APPROVED")] | length')
+          if [ "${approved:-0}" -lt 1 ]; then
+            echo "::error::No APPROVED reviews on PR #$pr"; exit 1
+          fi
+
+          has_label=$(gh pr view "$pr" --repo "$repo" --json labels -q \
+            '[.labels[]?.name] | index("Change-Reason") != null')
+          has_reason=$(gh pr view "$pr" --repo "$repo" --json body -q \
+            '(.body // "") | test("(?i)(reason|why|motivation|обосн|причин)")')
+          if [ "$has_label" != "true" ] && [ "$has_reason" != "true" ]; then
+            echo "::error::PR #$pr has no change reason"; exit 1
+          fi
+
+          echo "Push is from approved PR with reason -> OK"
+
+  # ---------------- Backup retention guard (≥30d) ----------------
+  backup_retention_guard:
+    if: ${{ vars.BACKUP_BUCKET != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Lifecycle retention ≥30d on BACKUP_BUCKET
+        env:
+          B: ${{ vars.BACKUP_BUCKET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          lc=$(aws s3api get-bucket-lifecycle-configuration --bucket "$B" 2>/dev/null || echo '')
+          days=$(jq -r '[.Rules[]?.Expiration?.Days // empty] | max // 0' <<<"$lc")
+          if [ "${days:-0}" -lt 30 ]; then
+            echo "::error::No lifecycle expiration ≥30 days on $B"; exit 1
+          fi
+          echo "Retention OK ($days d)"
+
+  # ---------------- Presence-gate + baseline governance ----------------
+  presence_gate:
+    needs: [codeql, dependency_review, secrets_presence_gate]
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    permissions:
+      contents: read
+      pull-requests: read
+      security-events: read
+    steps:
+      - name: Require SAST/SCA/Secrets to have RUN (skip ⇒ WARN)
+        shell: bash
+        run: |
+          set -euo pipefail
+          SAST="${{ needs.codeql.result }}"
+          SCA="${{ needs.dependency_review.result }}"
+          SECR="${{ needs.secrets_presence_gate.result }}"
+          echo "SAST=$SAST  SCA=$SCA  SECRETS=$SECR"
+          warn=0
+          for n in "SAST:$SAST" "SCA:$SCA" "SECRETS:$SECR"; do
+            k="${n%%:*}"; v="${n##*:}"
+            if [ "$v" = "skipped" ] || [ "$v" = "cancelled" ]; then
+              echo "::warning::$k scan was $v (required to run)"
+              warn=1
+            fi
+          done
+          [ $warn -eq 0 ] && echo "All presence checks ran ✅" || echo "Presence WARNs emitted"
+
+      - name: Baseline governance (changes require review)
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          pr=$(jq -r .number "$GITHUB_EVENT_PATH")
+          repo="${GITHUB_REPOSITORY}"
+          PATTERN='^(\.github/security-baselines/|\.codeql/|baseline/|secrets\.allowlist|trivy\.ignore|codeql\.sarif)$'
+          changed=$(gh api repos/$repo/pulls/$pr/files --paginate -q '.[].filename' | tr -d '\r' || true)
+          echo "$changed" | grep -E "$PATTERN" >/dev/null 2>&1 || exit 0
+          has_label=$(gh pr view "$pr" --repo "$repo" --json labels -q '[.labels[]?.name] | index("Baseline-Reviewed") != null')
+          has_reason=$(gh pr view "$pr" --repo "$repo" --json body   -q '(.body // "") | test("(?i)(baseline|suppression|обосн|подавлен|reason)")')
+          if [ "$has_label" != "true" ] && [ "$has_reason" != "true" ]; then
+            echo "::error::Baseline changes detected; add label 'Baseline-Reviewed' or put rationale in PR description"
+            exit 1
+          fi
+          echo "Baseline changes are reviewed ✅"
+
+  # ---------------- Collect reports (JSON/TXT) ----------------
+  collect_security_reports:
+    needs: [presence_gate]
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    permissions:
+      contents: read
+      security-events: read
+      pull-requests: read
+    steps:
+      - name: Gather reports
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _reports
+
+          repo="${GITHUB_REPOSITORY}"
+
+          # Code Scanning alerts (SAST)
+          gh api repos/$repo/code-scanning/alerts --paginate > _reports/codeql_alerts.json || echo '[]' > _reports/codeql_alerts.json
+
+          # Dependabot/Dependency alerts (SCA)
+          gh api repos/$repo/dependabot/alerts --paginate > _reports/dependabot_alerts.json || echo '[]' > _reports/dependabot_alerts.json
+
+          # Presence summary
+          jq -n --arg SAST "${{ needs.codeql.result }}" \
+                --arg SCA  "${{ needs.dependency_review.result }}" \
+                --arg SECR "${{ needs.secrets_presence_gate.result }}" \
+                '{sast:$SAST, sca:$SCA, secrets:$SECR}' > _reports/presence.json
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: security-reports
+          path: _reports
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: security-reports
+          path: _reports/*
+          overwrite: true
+
+  # ---------------- Attach reports to Release on tag ----------------
+  attach_security_reports:
+    needs: [collect_security_reports]
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write     # нужно для загрузки assets
+      security-events: read
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: security-reports
+          path: reports
+          overwrite: true
+      - name: Upload reports to Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF#refs/tags/}"
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" -t "$tag" -n "Automated release"
+          ls -l reports || true
+          gh release upload "$tag" reports/* --clobber || true
