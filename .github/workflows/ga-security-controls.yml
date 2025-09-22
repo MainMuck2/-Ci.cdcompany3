@@ -650,7 +650,7 @@ jobs:
             --base "main" || true
 
   # ---------------- Policy-as-code: PR must have review + reason ----------------
-  pr_policy_gate:
+    pr_policy_gate:
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     permissions:
@@ -664,16 +664,19 @@ jobs:
         run: |
           set -euo pipefail
           pr=$(jq -r .number "$GITHUB_EVENT_PATH")
+          repo="${GITHUB_REPOSITORY}"
 
-          approved=$(gh pr view "$pr" --json reviews -q \
+          # ≥1 APPROVED review
+          approved=$(gh pr view "$pr" --repo "$repo" --json reviews -q \
             '[.reviews[]?|select(.state=="APPROVED")] | length')
           if [ "${approved:-0}" -lt 1 ]; then
             echo "::error::Need at least 1 APPROVED review"; exit 1
           fi
 
-          has_label=$(gh pr view "$pr" --json labels -q \
-            '[.labels[]?.name=="Change-Reason"] | any')
-          has_reason=$(gh pr view "$pr" --json body -q \
+          # Причина изменения: метка или текст в описании
+          has_label=$(gh pr view "$pr" --repo "$repo" --json labels -q \
+            '[.labels[]?.name] | index("Change-Reason") != null')
+          has_reason=$(gh pr view "$pr" --repo "$repo" --json body -q \
             '(.body // "") | test("(?i)(reason|why|motivation|обосн|причин)")')
           if [ "$has_label" != "true" ] && [ "$has_reason" != "true" ]; then
             echo "::error::Provide change reason (label Change-Reason or reason in PR body)"; exit 1
@@ -681,8 +684,9 @@ jobs:
 
           echo "Policy OK"
 
+
   # ---------------- Policy-as-code: pushes to protected branches from approved PR only ----------------
-  push_pr_only_gate:
+    push_pr_only_gate:
     if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-latest
     permissions:
@@ -696,31 +700,34 @@ jobs:
         run: |
           set -euo pipefail
           case "${GITHUB_REF}" in
-            refs/heads/main|refs/heads/release/*) ;;
+            refs/heads/main|refs/heads/release/*) ;;  # защищённые
             *) echo "non-protected ref -> OK"; exit 0;;
           esac
 
-          prs=$(gh api repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls -q 'length')
+          repo="${GITHUB_REPOSITORY}"
+
+          prs=$(gh api repos/${repo}/commits/${GITHUB_SHA}/pulls -q 'length')
           if [ "${prs:-0}" -lt 1 ]; then
             echo "::error::Commit not associated with a PR"; exit 1
           fi
-          pr=$(gh api repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls -q '.[0].number')
+          pr=$(gh api repos/${repo}/commits/${GITHUB_SHA}/pulls -q '.[0].number')
 
-          approved=$(gh pr view "$pr" --json reviews -q \
+          approved=$(gh pr view "$pr" --repo "$repo" --json reviews -q \
             '[.reviews[]?|select(.state=="APPROVED")] | length')
           if [ "${approved:-0}" -lt 1 ]; then
             echo "::error::No APPROVED reviews on PR #$pr"; exit 1
           fi
 
-          has_label=$(gh pr view "$pr" --json labels -q \
-            '[.labels[]?.name=="Change-Reason"] | any')
-          has_reason=$(gh pr view "$pr" --json body -q \
+          has_label=$(gh pr view "$pr" --repo "$repo" --json labels -q \
+            '[.labels[]?.name] | index("Change-Reason") != null')
+          has_reason=$(gh pr view "$pr" --repo "$repo" --json body -q \
             '(.body // "") | test("(?i)(reason|why|motivation|обосн|причин)")')
           if [ "$has_label" != "true" ] && [ "$has_reason" != "true" ]; then
             echo "::error::PR #$pr has no change reason"; exit 1
           fi
 
           echo "Push is from approved PR with reason -> OK"
+
 
   # ---------------- Backup retention guard (≥30d) ----------------
   backup_retention_guard:
