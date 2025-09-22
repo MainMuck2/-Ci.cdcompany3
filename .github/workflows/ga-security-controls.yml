@@ -84,7 +84,7 @@ jobs:
           # --- yq: pin + checksum verify (SHA-512) ---
           YQ_VERSION="${YQ_VER:-v4.44.3}"
           if [ -n "${YQ_SHA512:-}" ]; then
-            sudo curl -fsSL -o /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+            sudo curl -fsSL -L -o /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
             echo "${YQ_SHA512}  /usr/local/bin/yq" | sha512sum -c -
             sudo chmod +x /usr/local/bin/yq
           else
