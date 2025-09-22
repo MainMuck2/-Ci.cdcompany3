@@ -148,7 +148,7 @@ jobs:
           GH_TOKEN: ${{ env.GH_TOKEN }}
         run: |
           set -euo pipefail
-          if ! gh attestation --help >/dev/null 2>&1; then
+          if ! gh attestation --help >/dev/null 2>/dev/null; then
             gh extension install github/gh-attestation
           fi
           WF="${GITHUB_WORKFLOW_REF}"
@@ -253,7 +253,6 @@ jobs:
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
-      # Решаем, можно ли дергать AWS по правилам (main/release/*/tags v*)
       - name: Decide if AWS steps are allowed for this ref
         id: gate
         shell: bash
@@ -263,7 +262,6 @@ jobs:
             *)                                               echo "aws=no"   >> "$GITHUB_OUTPUT" ;;
           esac
 
-      # Мягкий Debug OIDC (не ломает джоб даже если токена нет)
       - name: Debug OIDC claims
         if: steps.gate.outputs.aws == 'yes'
         continue-on-error: true
@@ -650,3 +648,98 @@ jobs:
             --title "chore(trust-store): sync org trust-store" \
             --body "Automated sync of .github/trust from \`${{ vars.ORG_TRUST_REPO }}\`" \
             --base "main" || true
+
+  # ---------------- Policy-as-code: PR must have review + reason ----------------
+  pr_policy_gate:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      contents: read
+    steps:
+      - name: Require ≥1 APPROVED review and change reason
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          pr=$(jq -r .number "$GITHUB_EVENT_PATH")
+
+          approved=$(gh pr view "$pr" --json reviews -q \
+            '[.reviews[]?|select(.state=="APPROVED")] | length')
+          if [ "${approved:-0}" -lt 1 ]; then
+            echo "::error::Need at least 1 APPROVED review"; exit 1
+          fi
+
+          has_label=$(gh pr view "$pr" --json labels -q \
+            '[.labels[]?.name=="Change-Reason"] | any')
+          has_reason=$(gh pr view "$pr" --json body -q \
+            '(.body // "") | test("(?i)(reason|why|motivation|обосн|причин)")')
+          if [ "$has_label" != "true" ] && [ "$has_reason" != "true" ]; then
+            echo "::error::Provide change reason (label Change-Reason or reason in PR body)"; exit 1
+          fi
+
+          echo "Policy OK"
+
+  # ---------------- Policy-as-code: pushes to protected branches from approved PR only ----------------
+  push_pr_only_gate:
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      contents: read
+    steps:
+      - name: Enforce PR-only for protected branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${GITHUB_REF}" in
+            refs/heads/main|refs/heads/release/*) ;;
+            *) echo "non-protected ref -> OK"; exit 0;;
+          esac
+
+          prs=$(gh api repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls -q 'length')
+          if [ "${prs:-0}" -lt 1 ]; then
+            echo "::error::Commit not associated with a PR"; exit 1
+          fi
+          pr=$(gh api repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls -q '.[0].number')
+
+          approved=$(gh pr view "$pr" --json reviews -q \
+            '[.reviews[]?|select(.state=="APPROVED")] | length')
+          if [ "${approved:-0}" -lt 1 ]; then
+            echo "::error::No APPROVED reviews on PR #$pr"; exit 1
+          fi
+
+          has_label=$(gh pr view "$pr" --json labels -q \
+            '[.labels[]?.name=="Change-Reason"] | any')
+          has_reason=$(gh pr view "$pr" --json body -q \
+            '(.body // "") | test("(?i)(reason|why|motivation|обосн|причин)")')
+          if [ "$has_label" != "true" ] && [ "$has_reason" != "true" ]; then
+            echo "::error::PR #$pr has no change reason"; exit 1
+          fi
+
+          echo "Push is from approved PR with reason -> OK"
+
+  # ---------------- Backup retention guard (≥30d) ----------------
+  backup_retention_guard:
+    if: ${{ vars.BACKUP_BUCKET != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Lifecycle retention ≥30d on BACKUP_BUCKET
+        env:
+          B: ${{ vars.BACKUP_BUCKET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          lc=$(aws s3api get-bucket-lifecycle-configuration --bucket "$B" 2>/dev/null || echo '')
+          days=$(jq -r '[.Rules[]?.Expiration?.Days // empty] | max // 0' <<<"$lc")
+          if [ "${days:-0}" -lt 30 ]; then
+            echo "::error::No lifecycle expiration ≥30 days on $B"; exit 1
+          fi
+          echo "Retention OK ($days d)"
