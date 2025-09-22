@@ -75,11 +75,25 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           ALLOW_OWNERS: actions,github,dependabot,aws-actions,google-github-actions,azure
+          # версионки/дайджесты берем из repo variables, с дефолтами
+          YQ_VER: ${{ vars.YQ_VERSION }}
+          YQ_SHA512: ${{ vars.YQ_SHA512 }}
         shell: bash
         run: |
           set -euo pipefail
-          sudo curl -fsSL -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64
-          sudo chmod +x /usr/local/bin/yq
+          # --- yq: pin + checksum verify (SHA-512) ---
+          YQ_VERSION="${YQ_VER:-v4.44.3}"
+          if [ -n "${YQ_SHA512:-}" ]; then
+            sudo curl -fsSL -o /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+            echo "${YQ_SHA512}  /usr/local/bin/yq" | sha512sum -c -
+            sudo chmod +x /usr/local/bin/yq
+          else
+            # бэкап-ветка (оставляем как было, но предупредим)
+            sudo curl -fsSL -o /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+            sudo chmod +x /usr/local/bin/yq
+            echo "::warning::YQ_SHA512 repo variable not set — checksum for yq not verified"
+          fi
+
           status=0
           mapfile -t WF < <(git ls-files '.github/workflows/*.y*ml' 2>/dev/null || true)
           for f in "${WF[@]}"; do
@@ -99,6 +113,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
+      SYFT_VER: ${{ vars.SYFT_VERSION }}
+      SYFT_TGZ_SHA256: ${{ vars.SYFT_TGZ_SHA256 }}
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
@@ -111,10 +127,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          VER="v1.33.0"
-          curl -fsSL -o syft.tgz https://github.com/anchore/syft/releases/download/${VER}/syft_${VER#v}_linux_amd64.tar.gz || \
-          curl -fsSL -o syft.tgz https://github.com/anchore/syft/releases/download/${VER}/syft_Linux_x86_64.tar.gz
+          # --- syft: pin + checksum verify (SHA-256) ---
+          VER="${SYFT_VER:-v1.33.0}"
+          curl -fsSL -o syft.tgz "https://github.com/anchore/syft/releases/download/${VER}/syft_${VER#v}_linux_amd64.tar.gz" || \
+          curl -fsSL -o syft.tgz "https://github.com/anchore/syft/releases/download/${VER}/syft_Linux_x86_64.tar.gz"
+          if [ -n "${SYFT_TGZ_SHA256:-}" ]; then
+            echo "${SYFT_TGZ_SHA256}  syft.tgz" | sha256sum -c -
+          else
+            echo "::warning::SYFT_TGZ_SHA256 repo variable not set — checksum for syft.tgz not verified"
+          fi
           tar -xzf syft.tgz syft && sudo install -m0755 syft /usr/local/bin/syft
+
           syft "file:artifact.txt" -o spdx-json=sbom.spdx.json
           D=$(sha256sum artifact.txt | awk '{print $1}')
           jq --arg d "$D" '.files=((.files // [])|map(select(.fileName!="artifact.txt")))+
