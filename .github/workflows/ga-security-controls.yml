@@ -227,23 +227,31 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .github/trust
+          SRC=""
           if [ -n "${ORG_TRUST_REPO:-}" ]; then
-            gh repo clone "$ORG_TRUST_REPO" _orgtrust -- -q || true
-            if [ -f _orgtrust/.github/trust/publishers.jwks.json ]; then
-              cp -r _orgtrust/.github/trust/* .github/trust/ || true
-              echo "source=org" >> "$GITHUB_OUTPUT"
+            echo "Trying to clone org trust repo: ${ORG_TRUST_REPO}"
+            if gh repo clone "$ORG_TRUST_REPO" _orgtrust -- -q; then
+              if [ -d _orgtrust/.github/trust ]; then
+                cp -a _orgtrust/.github/trust/. .github/trust/
+                SRC="org:${ORG_TRUST_REPO}"
+              fi
             else
-              echo "source=local" >> "$GITHUB_OUTPUT"
+              echo "::notice::gh clone failed (private repo or GH_TOKEN missing?)"
             fi
-          else
-            echo "source=local" >> "$GITHUB_OUTPUT"
           fi
+          if [ -z "$SRC" ] && [ -d ".github/trust" ] && [ -f ".github/trust/publishers.jwks.json" ]; then
+            SRC="local:.github/trust (already present)"
+          fi
+          echo "source=${SRC:-none}" >> "$GITHUB_OUTPUT"
+          echo "Resolved trust-store source: ${SRC:-none}"
+          ls -la .github/trust || true
+
       - name: Validate trust-store files
         env:
           AWS_KMS_KEY_ID: ${{ vars.AWS_KMS_KEY_ID }}
         run: |
           set -euo pipefail
-          test -f .github/trust/publishers.jwks.json || { echo "::error::JWKS missing"; exit 1; }
+          test -f .github/trust/publishers.jwks.json || { echo "::error::JWKS missing (.github/trust/publishers.jwks.json)"; exit 1; }
           jq -e '.keys|length>0' .github/trust/publishers.jwks.json >/dev/null
           test -f .github/trust/allowed_signers.json || { echo "::error::allowed_signers.json missing"; exit 1; }
           test -f .github/trust/revocations.json || { echo "::group::revocations.json missing -> treat as empty"; echo '{"kids":[]}' > .github/trust/revocations.json; echo "::endgroup::"; }
@@ -252,6 +260,9 @@ jobs:
             jq -r '.keys[].kid' .github/trust/publishers.jwks.json | grep -Fx "$K" >/dev/null || {
               echo "::warning::KID mismatch (expected $K)"; true; }
           fi
+          echo "Trust-store ready:"
+          ls -l .github/trust
+          jq -r '.keys[].kid' .github/trust/publishers.jwks.json
 
   # ---------------- Access recertification gate (BLOCK on expiry) ----------------
   access_recert_gate:
@@ -262,10 +273,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ ! -f .github/trust/access_catalog.json ]; then
-            echo "::error::missing .github/trust/access_catalog.json"
-            exit 1
-          fi
+          test -f .github/trust/access_catalog.json || { echo "::error::missing .github/trust/access_catalog.json"; exit 1; }
           NOW=$(date -u +%F)
           EXPIRED=$(jq -r --arg NOW "$NOW" '.groups[] | select(.recert_expires_at < $NOW) | .name' .github/trust/access_catalog.json)
           if [ -n "$EXPIRED" ]; then
@@ -308,10 +316,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .github/trust
-          if [ -n "${ORG_TRUST_REPO:-}" ]; then
-            gh repo clone "$ORG_TRUST_REPO" _orgtrust -- -q || true
-            test -d _orgtrust/.github/trust && cp -r _orgtrust/.github/trust/* .github/trust/ || true
+          if [ -n "${ORG_TRUST_REPO:-}" ] && gh repo clone "$ORG_TRUST_REPO" _orgtrust -- -q; then
+            test -d _orgtrust/.github/trust && cp -a _orgtrust/.github/trust/. .github/trust/ || true
           fi
+          ls -la .github/trust || true
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
@@ -601,10 +609,30 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .github/trust
+          SRC=""
           if [ -n "${ORG_TRUST_REPO:-}" ]; then
-            gh repo clone "$ORG_TRUST_REPO" _orgtrust -- -q || true
-            test -d _orgtrust/.github/trust && cp -r _orgtrust/.github/trust/* .github/trust/ || true
+            echo "Cloning trust-store from ${ORG_TRUST_REPO}…"
+            if gh repo clone "$ORG_TRUST_REPO" _orgtrust -- -q; then
+              if [ -d _orgtrust/.github/trust ]; then
+                cp -a _orgtrust/.github/trust/. .github/trust/
+                SRC="org:${ORG_TRUST_REPO}"
+              fi
+            else
+              echo "::notice::gh clone failed (private repo or ORG_READ_TOKEN missing?)"
+            fi
           fi
+          # If org sync didn't work but repo already has trust-store — use it
+          if [ -z "$SRC" ] && [ -f ".github/trust/publishers.jwks.json" ]; then
+            SRC="local:.github/trust"
+          fi
+          echo "Using trust-store source: ${SRC:-<none>}"
+          ls -la .github/trust || true
+          # Hard fail with actionable message if still missing
+          if [ ! -f ".github/trust/publishers.jwks.json" ]; then
+            echo "::error::missing .github/trust/publishers.jwks.json. Set repo var ORG_TRUST_REPO (owner/repo) and secret ORG_READ_TOKEN with read access to it, or commit .github/trust/* to this repo."
+            exit 1
+          fi
+          test -f .github/trust/allowed_signers.json || { echo "::error::missing .github/trust/allowed_signers.json"; exit 1; }
 
       - name: Enforce release-only refs
         shell: bash
@@ -616,8 +644,8 @@ jobs:
       - name: Check key revocations
         run: |
           set -euo pipefail
-          test -f .github/trust/revocations.json || { echo "no revocations.json -> OK"; exit 0; }
           KID="AWS:${{ vars.AWS_KMS_KEY_ID }}"
+          test -f .github/trust/revocations.json || { echo "no revocations.json -> OK"; exit 0; }
           jq -r '.kids[]?' .github/trust/revocations.json | grep -Fx "$KID" && {
             echo "::error::Key revoked ($KID)"; exit 1; } || echo "KID not revoked"
 
@@ -634,6 +662,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test -f .github/trust/allowed_signers.json || { echo "::error::missing .github/trust/allowed_signers.json"; exit 1; }
           tok=$(curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" | jq -r .value)
           test -n "$tok"
           body=$(echo "$tok" | awk -F. '{print $2}' | base64 -d 2>/dev/null)
@@ -692,24 +721,6 @@ jobs:
       name: admin-ops
     steps:
       - run: echo "Admin operation on trusted/registration runners. Waiting for environment approval..."
-
-  # ---------------- Access recertification gate (BLOCK on expiry) ----------------
-  access_recert_gate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
-      - name: Block if any group recert is expired
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -f .github/trust/access_catalog.json || { echo "::error::missing .github/trust/access_catalog.json"; exit 1; }
-          NOW=$(date -u +%F)
-          EXPIRED=$(jq -r --arg NOW "$NOW" '.groups[] | select(.recert_expires_at < $NOW) | .name' .github/trust/access_catalog.json)
-          if [ -n "$EXPIRED" ]; then
-            echo "::error::Access recert expired for groups:"; echo "$EXPIRED" | sed 's/^/- /'
-            exit 1
-          fi
-          echo "Access recert OK as of $NOW"
 
   # ---------------- Trust-store auto-rotation ----------------
   trust_store_rotate:
@@ -872,7 +883,6 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: security-reports
-        # path defaults to ./; that's OK
           path: reports
           overwrite: true
       - name: Upload reports to Release
