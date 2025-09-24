@@ -253,6 +253,27 @@ jobs:
               echo "::warning::KID mismatch (expected $K)"; true; }
           fi
 
+  # ---------------- Access recertification gate (BLOCK on expiry) ----------------
+  access_recert_gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - name: Block if any group recert is expired
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f .github/trust/access_catalog.json ]; then
+            echo "::error::missing .github/trust/access_catalog.json"
+            exit 1
+          fi
+          NOW=$(date -u +%F)
+          EXPIRED=$(jq -r --arg NOW "$NOW" '.groups[] | select(.recert_expires_at < $NOW) | .name' .github/trust/access_catalog.json)
+          if [ -n "$EXPIRED" ]; then
+            echo "::error::Access recert expired for groups:"; echo "$EXPIRED" | sed 's/^/- /'
+            exit 1
+          fi
+          echo "Access recert OK as of $NOW"
+
   # ---------------- KMS sign + verify ----------------
   kms_sign_and_verify:
     needs: [build_and_attest, trust_store_guard]
@@ -647,7 +668,6 @@ jobs:
       name: production
     concurrency:
       group: deploy-${{ github.ref_name }}
-      cancel-in-progress: true
     steps:
       - run: echo "All upstream gates passed. Waiting for env approval…"
 
@@ -939,6 +959,7 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: security-reports
+        # path defaults to ./; that's OK
           path: reports
           overwrite: true
       - name: Upload reports to Release
@@ -974,7 +995,7 @@ jobs:
               head="${GITHUB_SHA}"
               git fetch --no-tags --prune --depth=1 origin "$base" >/dev/null 2>&1 || true
               git diff --name-only "$base" "$head"
-            } else {
+            else
               before=$(jq -r '.before // empty' "$GITHUB_EVENT_PATH")
               if [ -n "$before" ] && [ "$before" != "0000000000000000000000000000000000000000" ]; then
                 git diff --name-only "$before" "$GITHUB_SHA"
@@ -1034,6 +1055,7 @@ jobs:
           curl -fsSL "$url" -o /tmp/actionlint.tgz
           tar -xzf /tmp/actionlint.tgz -C /tmp actionlint
           /tmp/actionlint -color -format '{{.File}}:{{.Line}}:{{.Col}}: {{.Kind}}: {{.Message}}'
+
       - name: Block artifact exfil when added
         if: steps.cf.outputs.any_changed == 'true'
         shell: bash
