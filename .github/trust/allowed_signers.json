@@ -1,5 +1,1 @@
-[
-  "MainMuck/Ci.cdcompany/.github/workflows/ga-security-controls.yml@refs/heads/main",
-  "MainMuck/Ci.cdcompany/.github/workflows/ga-security-controls.yml@refs/heads/release/prod",
-  "MainMuck/Ci.cdcompany/.github/workflows/ga-security-controls.yml@refs/tags/v1.4.3"
-]
+["MainMuck/Ci.cdcompany/.github/workflows/ga-security-controls.yml"]

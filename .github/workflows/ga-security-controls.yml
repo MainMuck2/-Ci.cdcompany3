@@ -669,9 +669,24 @@ jobs:
           repo=$(jq -r .repository <<<"$body")
           ref=$(jq -r .ref <<<"$body")
           wf=$(jq -r .job_workflow_ref <<<"$body")
+
+          echo "repo=$repo"
+          echo "ref=$ref"
+          echo "wf=$wf"
+
           [ "$repo" = "${GITHUB_REPOSITORY}" ] || { echo "::error::OIDC repo mismatch"; exit 1; }
           echo "$ref" | grep -Eq '^refs/(heads/(main|release/.*)|tags/v.*)$' || { echo "::error::OIDC ref not allowed"; exit 1; }
-          jq -r '.[]?' .github/trust/allowed_signers.json | grep -Fx "$wf" >/dev/null || { echo "::error::workflow not in allowed_signers"; exit 1; }
+
+          # allow exact match OR base path without @ref
+          wfbase="${wf%@*}"
+          if jq -e --arg wf "$wf" --arg wfbase "$wfbase" \
+               'map(select(. == $wf or . == $wfbase)) | length > 0' \
+               .github/trust/allowed_signers.json >/dev/null; then
+            echo "workflow allowed"
+          else
+            echo "::error::workflow not in allowed_signers (wf=$wf; wfbase=$wfbase)"
+            exit 1
+          fi
 
   # ---------------- Promote to Production ----------------
   promote_to_prod:
