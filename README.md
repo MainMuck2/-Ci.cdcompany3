@@ -1,2 +1,2 @@
 # Ci.cdcompany
-echo ""
+echo "12"
