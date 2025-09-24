@@ -451,7 +451,7 @@ jobs:
             grep -RInE "$PATTERN" -- . --exclude-dir=.git || true
             echo
             echo "# Secrets scan (artifacts)"
-            if [ -d "_scan/artifacts" ] && ls -A _scan/artifacts >/дуал 2>&1; then
+            if [ -d "_scan/artifacts" ] && ls -A _scan/artifacts >/dev/null 2>&1; then
               grep -RInE --binary-files=without-match --exclude-dir=.git --exclude-dir=.github "$PATTERN" _scan/artifacts || true
             else
               echo "no artifacts to scan"
@@ -967,7 +967,7 @@ jobs:
                 git fetch --no-tags --prune --depth=2 origin "${GITHUB_REF}" >/dev/null 2>&1 || true
                 git diff --name-only "${GITHUB_SHA}^" "$GITHUB_SHA" 2>/dev/null || true
               fi
-            fi
+            }
           }
           CHANGED="$(get_changed | tr -d '\r' | sed 's|^\./||')"
           echo "all_changed_files<<__EOF__" >> "$GITHUB_OUTPUT"
