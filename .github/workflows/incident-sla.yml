@@ -2,7 +2,7 @@ name: Incident SLA Watchdog
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -13,6 +13,8 @@ jobs:
   enforce_sla:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+
       - name: Check simple SLA for open incidents
         env:
           GH_TOKEN: ${{ github.token }}
@@ -23,7 +25,7 @@ jobs:
           ACK_P2=60; RES_P2=$((72*60))
 
           now=$(date -u +%s)
-          issues=$(gh issue list --state open --label incident --json number,createdAt,labels,assignees,url --limit 100 || echo '[]')
+          issues=$(gh --repo "$GITHUB_REPOSITORY" issue list --state open --label incident --json number,createdAt,labels,assignees,url --limit 100 || echo '[]')
           echo "$issues" | jq -c '.[]' | while read -r row; do
             num=$(jq -r .number <<<"$row")
             created=$(date -u -d "$(jq -r .createdAt <<<"$row")" +%s)
@@ -36,7 +38,7 @@ jobs:
             fi
 
             assigned=$(jq '.assignees | length' <<<"$row")
-            comments=$(gh api repos/${GITHUB_REPOSITORY}/issues/${num}/comments -q 'length' || echo 0)
+            comments=$(gh --repo "$GITHUB_REPOSITORY" api repos/${GITHUB_REPOSITORY}/issues/${num}/comments -q 'length' || echo 0)
             acked=$(( assigned + comments ))
 
             breach=""
@@ -44,9 +46,9 @@ jobs:
             if [ "$age_min" -ge "$RES" ]; then breach="${breach:+$breach+}RES"; fi
 
             if [ -n "$breach" ]; then
+              gh --repo "$GITHUB_REPOSITORY" issue comment "$num" --body ":rotating_light: SLA breach ($breach, $SEV). @MainMuck/oncall please escalate."
+              gh --repo "$GITHUB_REPOSITORY" issue edit "$num" --add-label "SLA-breached" >/dev/null
               echo "Issue #$num breached SLA ($breach, $SEV)"
-              gh issue comment "$num" --body ":rotating_light: SLA breach ($breach, $SEV). @MainMuck/oncall please escalate."
-              gh issue edit "$num" --add-label "SLA-breached" >/dev/null
             else
               echo "Issue #$num OK ($SEV, ${age_min}m)"
             fi
