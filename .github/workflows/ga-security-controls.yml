@@ -23,7 +23,6 @@ permissions:
   attestations: write
 
 env:
-  # форсируем WARN для всего пайплайна
   ENFORCEMENT: warn
   CAN_ATTEST: ${{ (github.event_name == 'push') || (github.event_name == 'workflow_dispatch') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
 
@@ -253,12 +252,24 @@ jobs:
             jq -r '.keys[].kid' .github/trust/publishers.jwks.json | grep -Fx "$K" >/dev/null || {
               echo "::warning::KID mismatch (expected $K)"; true; }
           fi
+      # >>> NEW: передаём trust-store дальше как артефакт
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: trust-store
+          path: .github/trust/*
 
   # ---------------- Access recertification gate (BLOCK on expiry) ----------------
   access_recert_gate:
+    needs: [trust_store_guard]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      # >>> NEW: подтягиваем trust-store из артефакта
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: trust-store
+          path: .github/trust
+        continue-on-error: true
       - name: Block if any group recert is expired
         shell: bash
         run: |
@@ -287,6 +298,13 @@ jobs:
           echo "Open connections BEFORE:"; ss -tpn || true
 
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+
+      # >>> NEW: подтягиваем trust-store из артефакта (для warn-проверок)
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: trust-store
+          path: .github/trust
+        continue-on-error: true
 
       - name: Decide if AWS steps are allowed for this ref
         id: gate
@@ -451,7 +469,7 @@ jobs:
             grep -RInE "$PATTERN" -- . --exclude-dir=.git || true
             echo
             echo "# Secrets scan (artifacts)"
-            if [ -d "_scan/artifacts" ] && ls -A _scan/artifacts >/дуал 2>&1; then
+            if [ -d "_scan/artifacts" ] && ls -A _scan/artifacts >/dev/null 2>&1; then
               grep -RInE --binary-files=without-match --exclude-dir=.git --exclude-dir=.github "$PATTERN" _scan/artifacts || true
             else
               echo "no artifacts to scan"
@@ -591,6 +609,13 @@ jobs:
     if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      # >>> NEW: подтянем trust-store из артефакта на этот раннер
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: trust-store
+          path: .github/trust
+        continue-on-error: true
       - name: Enforce release-only refs
         shell: bash
         run: |
@@ -647,7 +672,6 @@ jobs:
       name: production
     steps:
       - run: echo "Manual rollback to production requested. Waiting for environment approval..."
-      # TODO: реальные шаги отката
 
   # ---------------- Admin operations ----------------
   secrets_kms_admin:
@@ -921,21 +945,27 @@ jobs:
       contents: write
       security-events: read
     steps:
+      # >>> NEW: checkout нужен gh release без указания --repo
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: security-reports
           path: reports
           overwrite: true
+
       - name: Upload reports to Release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF#refs/tags/}"
+          tag="${GITHUB_REF_NAME}"
           gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" -t "$tag" -n "Automated release"
-          ls -l reports || true
-          gh release upload "$tag" reports/* --clobber || true
+          shopt -s nullglob
+          files=(reports/*)
+          [ ${#files[@]} -gt 0 ] || { echo "No reports to upload"; exit 0; }
+          gh release upload "$tag" "${files[@]}" --clobber
 
   # ---------------- M2: Audit workflow/plugins & block exfil in changed workflows ----------------
   audit_ci_changes:
