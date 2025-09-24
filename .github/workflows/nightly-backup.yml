@@ -1,0 +1,39 @@
+name: Nightly Config Backup
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Collect configs
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          cp -r .github/workflows out/ || true
+          cp -r .github/trust out/ || true
+          [ -f .github/CODEOWNERS ] && cp .github/CODEOWNERS out/ || true
+          [ -f sbom.spdx.json ] && cp sbom.spdx.json out/ || true
+          tar czf "backup-$(date -u +%F).tgz" -C out .
+
+      - name: Upload to S3
+        env:
+          B: ${{ vars.BACKUP_BUCKET }}
+        run: |
+          set -euo pipefail
+          test -n "$B"
+          aws s3 cp backup-*.tgz "s3://$B/backups/$(date -u +%Y/%m)/"

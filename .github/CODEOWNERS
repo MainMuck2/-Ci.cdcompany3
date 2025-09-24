@@ -1,3 +1,8 @@
 # Защита trust-store и workflow'ов
 .github/trust/**        @MainMuck/security
 .github/workflows/**    @MainMuck/security
+.github/trust/*         @MainMuck/security
+# deploy / infra
+scripts/deploy/**   @MainMuck/security
+infra/**            @MainMuck/security
+/.github/**   @MainMuck/oncall

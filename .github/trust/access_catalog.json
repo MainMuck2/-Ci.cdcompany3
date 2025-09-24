@@ -1,0 +1,8 @@
+{
+  "groups": [
+    { "name": "release-approvers", "recert_expires_at": "2025-12-31" },
+    { "name": "kms-signers",       "recert_expires_at": "2025-10-01" },
+    { "name": "secrets-admins",    "recert_expires_at": "2025-11-15" },
+    { "name": "trust-runners",     "recert_expires_at": "2025-12-01" }
+  ]
+}

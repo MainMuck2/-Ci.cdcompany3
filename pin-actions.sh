@@ -1,63 +1,18 @@
 #!/usr/bin/env bash
-# Pins all allowed Marketplace actions in .github/workflows/ga-security-controls.yml
-# to full-length commit SHAs, incl. CodeQL (v3 is a branch).
+# Pin all allowed Marketplace actions in .github/workflows to full SHAs.
 set -euo pipefail
 
-# -------- prerequisites ----------
-need() { command -v "$1" >/dev/null || { echo "❌ Install $1 first"; exit 1; }; }
-need gh
-need jq
-need sed
-need awk
+need(){ command -v "$1" >/dev/null || { echo "❌ install $1 first"; exit 1; }; }
+need gh; need jq; need sed; need awk
 
-WF_IN=".github/workflows/ga-security-controls.yml"
-[ -f "$WF_IN" ] || { echo "❌ $WF_IN not found (run from repo root)"; exit 1; }
+WF_DIR=".github/workflows"
+[ -d "$WF_DIR" ] || { echo "❌ $WF_DIR not found"; exit 1; }
 
-WF_BAK="${WF_IN}.bak"
-cp "$WF_IN" "$WF_BAK"
-echo "-> Backing up $WF_IN -> $WF_BAK"
+# ---- allow-list по owner'ам ----
+ALLOW_RE='^(actions|github|aws-actions|google-github-actions|dependabot|azure)(/|$)'
 
-CACHE=".pins.cache.$$"
-trap 'rm -f "$CACHE"' EXIT
-
-# Detect GNU sed vs BSD/macOS sed for -i flag
-if sed --version >/dev/null 2>&1; then
-  SED_GNU=1
-else
-  SED_GNU=0
-fi
-
-# ---------- resolve ref -> SHA (tag or branch) ----------
-resolve_sha () {
-  local repo="$1" tag="$2" key="${repo}@${tag}" sha obj_sha obj_type ref_json
-
-  # cache
-  if [ -f "$CACHE" ] && grep -Fq "^$key|" "$CACHE"; then
-    awk -F'|' -v k="$key" '$1==k{print $2}' "$CACHE"
-    return 0
-  fi
-
-  # 1) try as TAG
-  if ref_json=$(gh api "repos/${repo}/git/ref/tags/${tag}" 2>/dev/null); then
-    obj_sha=$(jq -r '.object.sha' <<<"$ref_json")
-    obj_type=$(jq -r '.object.type'<<<"$ref_json")
-    if [[ "$obj_type" == "tag" ]]; then
-      sha=$(gh api "repos/${repo}/git/tags/${obj_sha}" -q '.object.sha')
-    else
-      sha="$obj_sha"
-    fi
-  else
-    # 2) fallback: treat as BRANCH (used by github/codeql-action v3)
-    sha=$(gh api "repos/${repo}/git/ref/heads/${tag}" -q '.object.sha') || {
-      echo "❌ Cannot resolve ${repo}@${tag} (no tag or branch)"; return 1; }
-  fi
-
-  echo "${key}|${sha}" >> "$CACHE"
-  echo "$sha"
-}
-
-# --------- list of repos@refs to pin ----------
-LIST=$(cat <<'EOF'
+# ---- что пинить (repo + tag/branch) ----
+TO_PIN=$(cat <<'EOF'
 actions/checkout v4
 actions/upload-artifact v4
 actions/download-artifact v4
@@ -69,27 +24,78 @@ github/codeql-action v3
 EOF
 )
 
-echo "-> Pinning actions to full SHAs…"
+# ---- кэш резолвов ----
+CACHE=".pins.cache.$$"; trap 'rm -f "$CACHE"' EXIT
 
-# ---------- do the pin ----------
-while read -r repo tag; do
-  [ -z "$repo" ] && continue
-  sha="$(resolve_sha "$repo" "$tag")"
-  # replace any uses: <repo>(/subdir)?@<anything> with @<sha>
-  pattern="s#(uses:[[:space:]]*${repo}(/[a-zA-Z0-9._-]+)?@)[^[:space:]\"']+#\\1${sha}#g"
-  if [ "$SED_GNU" -eq 1 ]; then
-    sed -r -i "$pattern" "$WF_IN"
-  else
-    sed -E -i '' "$pattern" "$WF_IN"
+resolve_sha () {
+  local repo="$1" ref="$2" key="${repo}@${ref}" sha t
+  if [ -f "$CACHE" ] && grep -Fq "^$key|" "$CACHE"; then
+    awk -F'|' -v k="$key" '$1==k{print $2}' "$CACHE"; return 0
   fi
-  echo "   ${repo}@${tag} -> ${sha}"
-done <<< "$LIST"
+  # tag?
+  if gh api "repos/${repo}/git/ref/tags/${ref}" >/dev/null 2>&1; then
+    t=$(gh api "repos/${repo}/git/ref/tags/${ref}" -q '.object.type')
+    sha=$(gh api "repos/${repo}/git/ref/tags/${ref}" -q '.object.sha')
+    if [ "$t" = "tag" ]; then # annotated tag
+      sha=$(gh api "repos/${repo}/git/tags/${sha}" -q '.object.sha')
+    fi
+  else
+    # branch (например github/codeql-action@v3 — это ветка)
+    sha=$(gh api "repos/${repo}/git/ref/heads/${ref}" -q '.object.sha') || {
+      echo "❌ cannot resolve ${repo}@${ref}" >&2; return 1; }
+  fi
+  echo "${key}|${sha}" >> "$CACHE"
+  echo "$sha"
+}
 
-echo "OK. Updated: $WF_IN"
-echo "Backup left at: $WF_BAK"
+# ---- список файлов workflow (совместимо с bash 3.2) ----
+FILES=()
+while IFS= read -r f; do FILES+=("$f"); done < <(git ls-files "${WF_DIR}/*.yml" "${WF_DIR}/*.yaml" 2>/dev/null)
 
-# sanity check: no leftover @vN tags
-if grep -RInE 'uses:\s*[^@]+@v[0-9]+' "$WF_IN" >/dev/null; then
-  echo "⚠️  Some actions still pinned by tag (vN). Inspect $WF_IN"
+# ---- BSD/GNU sed -i флаг ----
+if sed --version >/dev/null 2>&1; then
+  SED_I=(-i)
+else
+  SED_I=(-i '')
+fi
+
+# ---- sanity: проверка owners в uses: ----
+violations=0
+for f in "${FILES[@]}"; do
+  while IFS= read -r line; do
+    # вытащить repo из "uses: <repo>@<ref>"
+    repo=$(printf '%s\n' "$line" | sed -E 's/.*uses:[[:space:]]*([^@[:space:]]+).*/\1/')
+    [ -z "$repo" ] && continue
+    if [[ ! "$repo" =~ $ALLOW_RE ]]; then
+      echo "❌ $f: $repo not allowed by policy"
+      violations=1
+    fi
+  done < <(grep -E '^[[:space:]]*-?[[:space:]]*uses:' "$f" || true)
+done
+[ $violations -eq 0 ] || { echo "🚫 fix disallowed owners first"; exit 1; }
+
+# ---- пин заранее известных repo@ref ----
+echo "→ Pinning well-known actions to full SHAs…"
+while read -r repo ref; do
+  [ -z "${repo:-}" ] && continue
+  sha=$(resolve_sha "$repo" "$ref")
+  # заменить uses: <repo>(/subpath)?@anything → @<sha>
+  sed -E "${SED_I[@]}" "s#(uses:[[:space:]]*${repo}(/[a-zA-Z0-9._-]+)?@)[^[:space:]\"']+#\\1${sha}#g" "${FILES[@]}"
+  echo "   ${repo}@${ref} → ${sha}"
+done <<< "$TO_PIN"
+
+# ---- CodeQL sub-actions (init/analyze) на один и тот же SHA ----
+codeql_sha=$(resolve_sha "github/codeql-action" "v3")
+sed -E "${SED_I[@]}" \
+  "s#(uses:[[:space:]]*github/codeql-action/(init|analyze)@)[^[:space:]\"']+#\\1${codeql_sha}#g" \
+  "${FILES[@]}"
+
+# ---- контроль: не осталось @vN ----
+if grep -RInE 'uses:\s*[^@]+@v[0-9]+' "${WF_DIR}" >/dev/null; then
+  echo "⚠️  Остались uses:@vN — проверьте вручную:"
+  grep -RInE 'uses:\s*[^@]+@v[0-9]+' "${WF_DIR}"
   exit 2
 fi
+
+echo "✅ Done. Commit the changes:"
+echo "   git add ${WF_DIR} && git commit -m 'ci: pin GitHub Actions to full SHAs'"
