@@ -9,12 +9,11 @@ permissions:
   contents: read
   id-token: write
 
-env:
-  TZ: UTC
-
 jobs:
   backup:
     runs-on: ubuntu-latest
+    env:
+      TZ: UTC
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 

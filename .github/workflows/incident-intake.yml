@@ -5,16 +5,15 @@ on:
     workflows: ["Security Framework Gates"]
     types: [completed]
   schedule:
-    - cron: '*/30 * * * *'   # каждые 30 мин проверка Dependabot
+    - cron: "*/30 * * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
   issues: write
-  security-events: read
+  security-events: read   # нужно для доступа к Dependabot alerts
 
 jobs:
-  # P1: инцидент, если основной security-workflow упал/таймаут
   open_incident_issue:
     if: >
       github.event_name == 'workflow_run' &&
@@ -22,13 +21,13 @@ jobs:
        github.event.workflow_run.conclusion == 'timed_out')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
       - name: Create incident (failed Security Framework Gates)
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          TITLE="INC: Security Framework Gates failed in ${GITHUB_REPOSITORY}"
+          TITLE="INC: Security Framework Gates failed in ${REPO}"
           BODY_FILE="$(mktemp)"
           {
             echo "# Auto-created incident"
@@ -39,44 +38,40 @@ jobs:
             echo
             echo "@MainMuck/oncall"
           } > "$BODY_FILE"
-          gh --repo "$GITHUB_REPOSITORY" issue create --title "$TITLE" --body-file "$BODY_FILE" --label "incident,P1"
+          gh issue create -R "$REPO" --title "$TITLE" --body-file "$BODY_FILE" --label "incident,P1"
 
-  # P2: «трекер»-инцидент по открытым Dependabot alert’ам
   dependabot_to_incident:
-    if: github.event_name != 'workflow_run'   # только по расписанию/ручному запуску
+    if: github.event_name != 'workflow_run'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
       - name: Create/refresh Dependabot incident
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          OPEN=$(gh --repo "$GITHUB_REPOSITORY" api repos/${GITHUB_REPOSITORY}/dependabot/alerts \
-                 -q '[.[] | select(.state=="open")] | length' 2>/dev/null || echo 0)
-          [[ "$OPEN" =~ ^[0-9]+$ ]] || OPEN=0
+          # количество открытых алёртов (0 если API недоступно)
+          OPEN=$(gh api -R "$REPO" repos/${REPO}/dependabot/alerts \
+                   -q '[.[] | select(.state=="open")] | length' 2>/dev/null || echo 0)
+          if [ "${OPEN:-0}" -eq 0 ]; then
+            echo "No open Dependabot alerts -> OK"; exit 0; fi
 
-          if [ "$OPEN" -eq 0 ]; then
-            echo "No open Dependabot alerts -> OK"
-            exit 0
-          fi
-
-          TITLE="INC: Dependabot alerts open in ${GITHUB_REPOSITORY}"
-          # ищем уже существующий «трекер»-инцидент
-          NUM=$(gh --repo "$GITHUB_REPOSITORY" issue list --state open --search "$TITLE in:title" \
-                 --json number -q '.[0].number' 2>/dev/null || echo "")
+          TITLE="INC: Dependabot alerts open in ${REPO}"
+          NUM=$(gh issue list -R "$REPO" --state open --search "$TITLE in:title" \
+                   --json number -q '.[0].number' 2>/dev/null || echo "")
 
           if [ -n "${NUM}" ] && [ "${NUM}" != "null" ]; then
-            gh --repo "$GITHUB_REPOSITORY" issue comment "$NUM" --body "Still open: ${OPEN} alert(s)."
+            gh issue comment -R "$REPO" "$NUM" --body "Still open: ${OPEN} alert(s)."
           else
             BODY_FILE="$(mktemp)"
             {
               echo "# Auto-created incident (Dependabot)"
               echo
               echo "Open alerts: **${OPEN}**"
-              echo "See: https://github.com/${GITHUB_REPOSITORY}/security/dependabot"
+              echo "See: https://github.com/${REPO}/security/dependabot"
               echo
               echo "@MainMuck/oncall"
             } > "$BODY_FILE"
-            gh --repo "$GITHUB_REPOSITORY" issue create --title "$TITLE" --body-file "$BODY_FILE" --label "incident,P2,dependabot"
+            gh issue create -R "$REPO" --title "$TITLE" --body-file "$BODY_FILE" \
+              --label "incident,P2,dependabot"
           fi
