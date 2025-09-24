@@ -5,3 +5,4 @@
 # deploy / infra
 scripts/deploy/**   @MainMuck/security
 infra/**            @MainMuck/security
+/.github/**   @MainMuck/oncall
