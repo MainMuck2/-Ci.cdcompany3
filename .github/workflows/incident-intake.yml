@@ -25,30 +25,30 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          TMP="$(mktemp)"
+
           if [ "${{ github.event_name }}" = "workflow_run" ]; then
             TITLE="INC: Security Framework Gates failed in ${GITHUB_REPOSITORY}"
-            BODY="$(cat <<'EOF'
-# Auto-created incident
-
-**Workflow:** Security Framework Gates
-**Run:** ${{ github.event.workflow_run.html_url }}
-**Branch:** ${{ github.event.workflow_run.head_branch }}
-
-@MainMuck/oncall
-EOF
-)"
+            {
+              echo "# Auto-created incident"
+              echo
+              echo "**Workflow:** Security Framework Gates"
+              echo "**Run:** ${{ github.event.workflow_run.html_url }}"
+              echo "**Branch:** ${{ github.event.workflow_run.head_branch }}"
+              echo
+              echo "@MainMuck/oncall"
+            } > "$TMP"
             LABELS="incident,P1"
           else
             TITLE="INC: New Dependabot alert in ${GITHUB_REPOSITORY}"
-            BODY="$(cat <<EOF
-# Auto-created incident (Dependabot)
-
-See: https://github.com/${GITHUB_REPOSITORY}/security/dependabot
-
-@MainMuck/oncall
-EOF
-)"
+            {
+              echo "# Auto-created incident (Dependabot)"
+              echo
+              echo "See: https://github.com/${GITHUB_REPOSITORY}/security/dependabot"
+              echo
+              echo "@MainMuck/oncall"
+            } > "$TMP"
             LABELS="incident,P2"
           fi
 
-          gh issue create --title "$TITLE" --body "$BODY" --label "$LABELS"
+          gh issue create --title "$TITLE" --body-file "$TMP" --label "$LABELS"
