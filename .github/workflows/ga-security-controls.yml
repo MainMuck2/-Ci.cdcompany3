@@ -252,29 +252,20 @@ jobs:
             jq -r '.keys[].kid' .github/trust/publishers.jwks.json | grep -Fx "$K" >/dev/null || {
               echo "::warning::KID mismatch (expected $K)"; true; }
           fi
-      # >>> NEW: передаём trust-store дальше как артефакт
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: trust-store
-          path: .github/trust/*
 
   # ---------------- Access recertification gate (BLOCK on expiry) ----------------
   access_recert_gate:
-    needs: [trust_store_guard]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
-      # >>> NEW: подтягиваем trust-store из артефакта
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: trust-store
-          path: .github/trust
-        continue-on-error: true
       - name: Block if any group recert is expired
         shell: bash
         run: |
           set -euo pipefail
-          test -f .github/trust/access_catalog.json || { echo "::error::missing .github/trust/access_catalog.json"; exit 1; }
+          if [ ! -f .github/trust/access_catalog.json ]; then
+            echo "::error::missing .github/trust/access_catalog.json"
+            exit 1
+          fi
           NOW=$(date -u +%F)
           EXPIRED=$(jq -r --arg NOW "$NOW" '.groups[] | select(.recert_expires_at < $NOW) | .name' .github/trust/access_catalog.json)
           if [ -n "$EXPIRED" ]; then
@@ -299,13 +290,6 @@ jobs:
 
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
-      # >>> NEW: подтягиваем trust-store из артефакта (для warn-проверок)
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: trust-store
-          path: .github/trust
-        continue-on-error: true
-
       - name: Decide if AWS steps are allowed for this ref
         id: gate
         shell: bash
@@ -314,6 +298,20 @@ jobs:
             refs/heads/main|refs/heads/release/*|refs/tags/v*) echo "aws=yes"  >> "$GITHUB_OUTPUT" ;;
             *)                                               echo "aws=no"   >> "$GITHUB_OUTPUT" ;;
           esac
+
+      - name: Load org trust-store (for this job too)
+        if: steps.gate.outputs.aws == 'yes'
+        env:
+          ORG_TRUST_REPO: ${{ vars.ORG_TRUST_REPO }}
+          GH_TOKEN: ${{ secrets.ORG_READ_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .github/trust
+          if [ -n "${ORG_TRUST_REPO:-}" ]; then
+            gh repo clone "$ORG_TRUST_REPO" _orgtrust -- -q || true
+            test -d _orgtrust/.github/trust && cp -r _orgtrust/.github/trust/* .github/trust/ || true
+          fi
 
       - name: Debug OIDC claims
         if: steps.gate.outputs.aws == 'yes'
@@ -610,18 +608,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
-      # >>> NEW: подтянем trust-store из артефакта на этот раннер
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: trust-store
-          path: .github/trust
-        continue-on-error: true
+
+      - name: Load org trust-store (required in this job)
+        env:
+          ORG_TRUST_REPO: ${{ vars.ORG_TRUST_REPO }}
+          GH_TOKEN: ${{ secrets.ORG_READ_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .github/trust
+          if [ -n "${ORG_TRUST_REPO:-}" ]; then
+            gh repo clone "$ORG_TRUST_REPO" _orgtrust -- -q || true
+            test -d _orgtrust/.github/trust && cp -r _orgtrust/.github/trust/* .github/trust/ || true
+          fi
+
       - name: Enforce release-only refs
         shell: bash
         run: |
           set -euo pipefail
           case "${GITHUB_REF}" in refs/heads/main|refs/heads/release/*|refs/tags/v*) ;; *)
             echo "::error::Deploy allowed only from main/release/*/v*"; exit 1;; esac
+
       - name: Check key revocations
         run: |
           set -euo pipefail
@@ -629,6 +636,7 @@ jobs:
           KID="AWS:${{ vars.AWS_KMS_KEY_ID }}"
           jq -r '.kids[]?' .github/trust/revocations.json | grep -Fx "$KID" && {
             echo "::error::Key revoked ($KID)"; exit 1; } || echo "KID not revoked"
+
       - name: Enforce signer present in JWKS (unknown ⇒ block)
         shell: bash
         env:
@@ -637,6 +645,7 @@ jobs:
           set -euo pipefail
           test -f .github/trust/publishers.jwks.json || { echo "::error::missing .github/trust/publishers.jwks.json"; exit 1; }
           jq -e --arg k "$KID" '.keys[]?|.kid==$k' .github/trust/publishers.jwks.json >/dev/null || { echo "::error::unknown signer $KID (not in .github/trust/publishers.jwks.json)"; exit 1; }
+
       - name: Verify OIDC claims + allowed_signers
         shell: bash
         run: |
@@ -659,7 +668,6 @@ jobs:
       name: production
     concurrency:
       group: deploy-${{ github.ref_name }}
-      cancel-in-progress: true
     steps:
       - run: echo "All upstream gates passed. Waiting for env approval…"
 
@@ -672,6 +680,7 @@ jobs:
       name: production
     steps:
       - run: echo "Manual rollback to production requested. Waiting for environment approval..."
+      # TODO: реальные шаги отката
 
   # ---------------- Admin operations ----------------
   secrets_kms_admin:
@@ -924,6 +933,7 @@ jobs:
     if: ${{ startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
       - name: Block if release already exists for this tag
         env:
           GH_TOKEN: ${{ github.token }}
@@ -945,27 +955,23 @@ jobs:
       contents: write
       security-events: read
     steps:
-      # >>> NEW: checkout нужен gh release без указания --repo
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
-
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: security-reports
+        # path defaults to ./; that's OK
           path: reports
           overwrite: true
-
       - name: Upload reports to Release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
+          tag="${GITHUB_REF#refs/tags/}"
           gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" -t "$tag" -n "Automated release"
-          shopt -s nullglob
-          files=(reports/*)
-          [ ${#files[@]} -gt 0 ] || { echo "No reports to upload"; exit 0; }
-          gh release upload "$tag" "${files[@]}" --clobber
+          ls -l reports || true
+          gh release upload "$tag" reports/* --clobber || true
 
   # ---------------- M2: Audit workflow/plugins & block exfil in changed workflows ----------------
   audit_ci_changes:
