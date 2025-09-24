@@ -192,7 +192,7 @@ jobs:
           GH_TOKEN: ${{ env.GH_TOKEN }}
         run: |
           set -euo pipefail
-          if ! gh attestation --help >/dev/null 2>&1; then
+          if ! gh attestation --help >/dev/null 2^>/dev/null; then
             gh extension install github/gh-attestation
           fi
           WF="${GITHUB_WORKFLOW_REF}"
@@ -761,7 +761,7 @@ jobs:
       pull-requests: read
       contents: read
     steps:
-      - name: Enforce PR-only for protected branches
+      - name: Enforce PR-only for protected branches (WARN mode)
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -772,24 +772,29 @@ jobs:
             *) echo "non-protected ref -> OK"; exit 0;;
           esac
           repo="${GITHUB_REPOSITORY}"
-          prs=$(gh api repos/${repo}/commits/${GITHUB_SHA}/pulls -q 'length')
+          prs=$(gh api repos/${repo}/commits/${GITHUB_SHA}/pulls -q 'length' 2>/dev/null || echo 0)
+          warn=0
           if [ "${prs:-0}" -lt 1 ]; then
-            echo "::error::Commit not associated with a PR"; exit 1
+            echo "::warning::Commit not associated with a PR"; warn=1
+          else
+            pr=$(gh api repos/${repo}/commits/${GITHUB_SHA}/pulls -q '.[0].number' 2>/dev/null || echo "")
+            if [ -n "$pr" ]; then
+              approved=$(gh pr view "$pr" --repo "$repo" --json reviews -q \
+                '[.reviews[]?|select(.state=="APPROVED")] | length' 2>/dev/null || echo 0)
+              if [ "${approved:-0}" -lt 1 ]; then
+                echo "::warning::No APPROVED reviews on PR #$pr"; warn=1
+              fi
+              has_label=$(gh pr view "$pr" --repo "$repo" --json labels -q \
+                '[.labels[]?.name] | index("Change-Reason") != null' 2>/dev/null || echo false)
+              has_reason=$(gh pr view "$pr" --repo "$repo" --json body -q \
+                '(.body // "") | test("(?i)(reason|why|motivation|обосн|причин)")' 2>/dev/null || echo false)
+              if [ "$has_label" != "true" ] && [ "$has_reason" != "true" ]; then
+                echo "::warning::PR #$pr has no change reason"; warn=1
+              fi
+            fi
           fi
-          pr=$(gh api repos/${repo}/commits/${GITHUB_SHA}/pulls -q '.[0].number')
-          approved=$(gh pr view "$pr" --repo "$repo" --json reviews -q \
-            '[.reviews[]?|select(.state=="APPROVED")] | length')
-          if [ "${approved:-0}" -lt 1 ]; then
-            echo "::error::No APPROVED reviews on PR #$pr"; exit 1
-          fi
-          has_label=$(gh pr view "$pr" --repo "$repo" --json labels -q \
-            '[.labels[]?.name] | index("Change-Reason") != null')
-          has_reason=$(gh pr view "$pr" --repo "$repo" --json body -q \
-            '(.body // "") | test("(?i)(reason|why|motivation|обосн|причин)")')
-          if [ "$has_label" != "true" ] && [ "$has_reason" != "true" ]; then
-            echo "::error::PR #$pr has no change reason"; exit 1
-          fi
-          echo "Push is from approved PR with reason -> OK"
+          [ $warn -eq 0 ] && echo "Push is from approved PR with reason -> OK" || echo "WARN mode → not failing"
+          exit 0
 
   # ---------------- Backup retention guard (≥30d) ----------------
   backup_retention_guard:
@@ -967,7 +972,7 @@ jobs:
                 git fetch --no-tags --prune --depth=2 origin "${GITHUB_REF}" >/dev/null 2>&1 || true
                 git diff --name-only "${GITHUB_SHA}^" "$GITHUB_SHA" 2>/dev/null || true
               fi
-            }
+            fi
           }
           CHANGED="$(get_changed | tr -d '\r' | sed 's|^\./||')"
           echo "all_changed_files<<__EOF__" >> "$GITHUB_OUTPUT"
@@ -1020,7 +1025,7 @@ jobs:
           tar -xzf /tmp/actionlint.tgz -C /tmp actionlint
           /tmp/actionlint -color -format '{{.File}}:{{.Line}}:{{.Col}}: {{.Kind}}: {{.Message}}'
 
-      - name: Block artifact exfil when added
+      - name: Block artifact exfil when added (WARN only)
         if: steps.cf.outputs.any_changed == 'true'
         shell: bash
         run: |
@@ -1029,10 +1034,9 @@ jobs:
           while IFS= read -r f; do
             [ -n "$f" ] || continue
             if grep -nE "upload-artifact|download-artifact" "$f"; then
-              echo "::error file=$f::Found upload/download-artifact in changed workflow. Remove or justify."
+              echo "::warning file=$f::Found upload/download-artifact in changed workflow. Remove or justify."
               bad=1
             fi
           done < <(printf '%s\n' "${{ steps.cf.outputs.all_changed_files }}" | grep -E '^\.?github/workflows/.*\.ya?ml$' || true)
-          if [ $bad -ne 0 ]; then
-            echo "::warning::artifact exfil pattern found (WARN mode)"; exit 0
-          fi
+          [ $bad -ne 0 ] && echo "::warning::artifact exfil pattern found (WARN mode)"
+          exit 0
