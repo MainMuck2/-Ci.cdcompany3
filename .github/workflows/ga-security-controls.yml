@@ -1020,4 +1020,3 @@ jobs:
           if [ $bad -ne 0 ]; then
             echo "::warning::artifact exfil pattern found (WARN mode)"; exit 0
           fi
-!
