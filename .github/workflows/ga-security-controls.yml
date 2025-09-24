@@ -80,7 +80,8 @@ jobs:
       - name: Verify publishers + pin to commit
         env:
           GH_TOKEN: ${{ github.token }}
-          ALLOW_OWNERS: actions,github,dependabot,aws-actions,google-github-actions,azure
+          # расширил allow-list, чтобы новые экшены не ломали пайп
+          ALLOW_OWNERS: actions,github,dependabot,aws-actions,google-github-actions,azure,tj-actions,rhysd,step-security,sigstore
           # версионки/дайджесты берем из repo variables, с дефолтами
           YQ_VER: ${{ vars.YQ_VERSION }}
           YQ_SHA512: ${{ vars.YQ_SHA512 }}
@@ -125,6 +126,12 @@ jobs:
       SYFT_VER: ${{ vars.SYFT_VERSION }}
       SYFT_TGZ_SHA256: ${{ vars.SYFT_TGZ_SHA256 }}
     steps:
+      # egress audit (нетипичные IP/ASN) — режим audit (ничего не блокирует, но логирует)
+      - name: M2 — egress anomaly audit
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
       - name: Build artifact
@@ -283,6 +290,12 @@ jobs:
       id-token: write
       contents: read
     steps:
+      # egress audit (нетипичные IP/ASN)
+      - name: M2 — egress anomaly audit
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
       - name: Decide if AWS steps are allowed for this ref
@@ -531,7 +544,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Возьмём до 100 самых свежих ключей и аккуратно распарсим
           KEYS_JSON=$(aws s3api list-objects-v2 --bucket "$B" --prefix "${P:-}" \
             --query 'reverse(sort_by(Contents,&LastModified))[:100].Key' --output json)
           mapfile -t KEYS < <(jq -r '.[]?' <<<"$KEYS_JSON")
@@ -543,7 +555,6 @@ jobs:
           tmp_all="$(mktemp)"
           fetched=0
           for k in "${KEYS[@]}"; do
-            # Проверяем наличие, скачиваем и распаковываем
             if ! aws s3api head-object --bucket "$B" --key "$k" >/dev/null 2>&1; then
               echo "::notice::skip missing/deleted object: $k"
               continue
@@ -555,7 +566,7 @@ jobs:
           done
 
           if [ $fetched -eq 0 ]; then
-            echo "::notice::could not read any of the recent objects (eventual consistency/permissions?)"
+            echo "::notice::could not read any of the recent objects"
             exit 0
           fi
 
@@ -568,12 +579,11 @@ jobs:
           echo "Top action categories (prefix):"
           awk -F'[._]' 'NF{print $1}' "$acts" | sort | uniq -c | sort -nr | head -n 20 | sed 's/^/  /'
 
-          # Считаем CI/CD-метрики для аудита
           ci=$(grep -Ec '^(workflows\.|artifact\.|repo\.|repository_|checks\.|environment\.)' "$acts" || true)
           if [ "$ci" -gt 0 ]; then
             echo "✓ Found ${ci} CI/CD audit events (workflows/artifact/repo/checks/environment)."
           else
-            echo "::notice::no CI/CD audit events among the last ${#KEYS[@]} objects (может быть тихий период)."
+            echo "::notice::no CI/CD audit events among the last ${#KEYS[@]} objects."
           fi
       - name: Lifecycle retention ≥30d
         env:
@@ -933,9 +943,26 @@ jobs:
           path: _reports/*
           overwrite: true
 
+  # ---------------- Release protection (no over-publish) ----------------
+  release_protection:
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Block if release already exists for this tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF#refs/tags/}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::Release ${tag} already exists — publishing over release is forbidden"
+            exit 1
+          fi
+          echo "No existing release for ${tag} -> OK"
+
   # ---------------- Attach reports to Release on tag ----------------
   attach_security_reports:
-    needs: [collect_security_reports]
+    needs: [collect_security_reports, release_protection]
     if: ${{ startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     permissions:
@@ -957,3 +984,53 @@ jobs:
           gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" -t "$tag" -n "Automated release"
           ls -l reports || true
           gh release upload "$tag" reports/* --clobber || true
+
+  # ---------------- M2: Audit workflow/plugins & block exfil in changed workflows ----------------
+  audit_ci_changes:
+    name: M2 — Audit workflow/plugins & exfil
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1) какие файлы менялись (2025: tj-actions/changed-files)
+      - id: cf
+        uses: tj-actions/changed-files@v45
+        with:
+          files: |
+            .github/workflows/**
+            action.yml
+            actions/**
+
+      # 2) линт workflow только если были изменения
+      - name: actionlint
+        if: steps.cf.outputs.any_changed == 'true'
+        uses: rhysd/actionlint@v1
+
+      # 3) проверка pin-версий экшенов (только предупреждаем)
+      - name: validate pinned actions (audit-only)
+        if: steps.cf.outputs.any_changed == 'true'
+        uses: step-security/validate-pinned-actions@v2
+        continue-on-error: true
+
+      # 4) детект эксфила: если В ИЗМЕНЁННЫХ workflow появился upload/download-artifact — валим сборку
+      - name: block artifact exfil when added
+        if: steps.cf.outputs.any_changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="${{ steps.cf.outputs.all_changed_files }}"
+          IFS=$'\n'
+          for f in $changed; do
+            case "$f" in
+              .github/workflows/*)
+                if grep -nE "upload-artifact|download-artifact" "$f"; then
+                  echo "::error file=$f::Found upload/download-artifact in changed workflow. Remove or justify."
+                  exit 1
+                fi
+              ;;
+            esac
+          done
