@@ -663,28 +663,38 @@ jobs:
         run: |
           set -euo pipefail
           test -f .github/trust/allowed_signers.json || { echo "::error::missing .github/trust/allowed_signers.json"; exit 1; }
-          tok=$(curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" | jq -r .value)
-          test -n "$tok"
-          body=$(echo "$tok" | awk -F. '{print $2}' | base64 -d 2>/dev/null)
-          repo=$(jq -r .repository <<<"$body")
-          ref=$(jq -r .ref <<<"$body")
-          wf=$(jq -r .job_workflow_ref <<<"$body")
+
+          echo "has URL: ${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}  has TOKEN: ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+yes}"
+
+          tok=$(curl -fsSL \
+                 -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+                 "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" \
+                 | jq -r .value)
+
+          if ! echo "$tok" | grep -q '\.'; then
+            echo "::error::failed to obtain OIDC token (check permissions: id-token: write)"; exit 1
+          fi
+
+          body=$(cut -d. -f2 <<<"$tok" | base64 -d 2>/dev/null || true)
+          repo=$(jq -er '.repository' <<<"$body") || { echo "::error::bad OIDC body"; exit 1; }
+          ref=$(jq -r '.ref // empty' <<<"$body")
+          wf=$(jq -r '.job_workflow_ref // empty' <<<"$body")
 
           echo "repo=$repo"
           echo "ref=$ref"
           echo "wf=$wf"
 
           [ "$repo" = "${GITHUB_REPOSITORY}" ] || { echo "::error::OIDC repo mismatch"; exit 1; }
-          echo "$ref" | grep -Eq '^refs/(heads/(main|release/.*)|tags/v.*)$' || { echo "::error::OIDC ref not allowed"; exit 1; }
+          echo "$ref" | grep -Eq '^refs/(heads/(main|release/.*)|tags/v.*)$' || { echo "::error::OIDC ref not allowed ($ref)"; exit 1; }
 
-          # allow exact match OR base path without @ref
           wfbase="${wf%@*}"
-          if jq -e --arg wf "$wf" --arg wfbase "$wfbase" \
-               'map(select(. == $wf or . == $wfbase)) | length > 0' \
+          if jq -e --arg wf "$wf" --arg wb "$wfbase" \
+               'type=="array" and (map(select(.==$wf or .==$wb)) | length > 0)' \
                .github/trust/allowed_signers.json >/dev/null; then
             echo "workflow allowed"
           else
             echo "::error::workflow not in allowed_signers (wf=$wf; wfbase=$wfbase)"
+            cat .github/trust/allowed_signers.json
             exit 1
           fi
 
@@ -1010,3 +1020,4 @@ jobs:
           if [ $bad -ne 0 ]; then
             echo "::warning::artifact exfil pattern found (WARN mode)"; exit 0
           fi
+!
