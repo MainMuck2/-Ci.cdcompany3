@@ -13,13 +13,12 @@ jobs:
   enforce_sla:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
       - name: Check simple SLA for open incidents
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # SLA (минимум, хардкод): P1 ack<=30m / resolve<=24h; P2 ack<=60m / resolve<=72h
+          # минимальные SLA: P1 ack<=30m / resolve<=24h; P2 ack<=60m / resolve<=72h
           ACK_P1=30; RES_P1=$((24*60))
           ACK_P2=60; RES_P2=$((72*60))
 
@@ -30,70 +29,12 @@ jobs:
             created=$(date -u -d "$(jq -r .createdAt <<<"$row")" +%s)
             age_min=$(( (now - created) / 60 ))
 
-            # severity по метке, по умолчанию P2
             if jq -e '.labels[].name | select(.=="P1")' <<<"$row" >/dev/null; then
               ACK=$ACK_P1; RES=$RES_P1; SEV=P1
             else
               ACK=$ACK_P2; RES=$RES_P2; SEV=P2
             fi
 
-            # ack: назначили исполнителя или есть хоть один комментарий
-            assigned=$(jq '.assignees | length' <<<"$row")
-            comments=$(gh api repos/${GITHUB_REPOSITORY}/issues/${num}/comments -q 'length' || echo 0)
-            acked=$(( assigned + comments ))
-
-            breach=""
-            if [ "$acked" -eq 0 ] && [ "$age_min" -ge "$ACK" ]; then breach="ACK"; fi
-            if [ "$age_min" -ge "$RES" ]; then breach="${breach:+$breach+}RES"; fi
-
-            if [ -n "$breach" ]; then
-              echo "Issue #$num breached SLA ($breach, $SEV)"
-              gh issue comment "$num" --body ":rotating_light: SLA breach ($breach, $SEV). @MainMuck/oncall please escalate."
-              gh issue edit "$num" --add-label "SLA-breached" >/dev/null
-            else
-              echo "Issue #$num OK ($SEV, ${age_min}m)"
-            fi
-          done
-name: Incident SLA Watchdog
-
-on:
-  schedule:
-    - cron: "*/15 * * * *"
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  issues: write
-
-jobs:
-  enforce_sla:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
-      - name: Check simple SLA for open incidents
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          # SLA (минимум, хардкод): P1 ack<=30m / resolve<=24h; P2 ack<=60m / resolve<=72h
-          ACK_P1=30; RES_P1=$((24*60))
-          ACK_P2=60; RES_P2=$((72*60))
-
-          now=$(date -u +%s)
-          issues=$(gh issue list --state open --label incident --json number,createdAt,labels,assignees,url --limit 100 || echo '[]')
-          echo "$issues" | jq -c '.[]' | while read -r row; do
-            num=$(jq -r .number <<<"$row")
-            created=$(date -u -d "$(jq -r .createdAt <<<"$row")" +%s)
-            age_min=$(( (now - created) / 60 ))
-
-            # severity по метке, по умолчанию P2
-            if jq -e '.labels[].name | select(.=="P1")' <<<"$row" >/dev/null; then
-              ACK=$ACK_P1; RES=$RES_P1; SEV=P1
-            else
-              ACK=$ACK_P2; RES=$RES_P2; SEV=P2
-            fi
-
-            # ack: назначили исполнителя или есть хоть один комментарий
             assigned=$(jq '.assignees | length' <<<"$row")
             comments=$(gh api repos/${GITHUB_REPOSITORY}/issues/${num}/comments -q 'length' || echo 0)
             acked=$(( assigned + comments ))
