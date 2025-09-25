@@ -12,10 +12,15 @@ permissions:
 jobs:
   enforce_sla:
     runs-on: ubuntu-latest
+    env:
+      TZ: UTC
+      GH_NO_UPDATE_NOTIFIER: "1"
+      GH_PROMPT_DISABLED: "1"
     steps:
       - name: Check simple SLA for open incidents
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           # минимальные SLA: P1 ack<=30m / resolve<=24h; P2 ack<=60m / resolve<=72h
@@ -23,20 +28,32 @@ jobs:
           ACK_P2=60; RES_P2=$((72*60))
 
           now=$(date -u +%s)
-          issues=$(gh issue list --state open --label incident --json number,createdAt,labels,assignees,url --limit 100 || echo '[]')
+
+          # тянем открытые инциденты; --silent и редиректы убирают мусор в случае 403/404
+          issues=$(gh issue list -R "$REPO" --state open --label incident \
+                     --json number,createdAt,labels,assignees,url --limit 100 \
+                     --silent 2>/dev/null || echo '[]')
+
           echo "$issues" | jq -c '.[]' | while read -r row; do
-            num=$(jq -r .number <<<"$row")
-            created=$(date -u -d "$(jq -r .createdAt <<<"$row")" +%s)
+            num=$(jq -r '.number' <<<"$row")
+            created_at=$(jq -r '.createdAt' <<<"$row")
+            created=$(date -u -d "$created_at" +%s)
             age_min=$(( (now - created) / 60 ))
 
-            if jq -e '.labels[].name | select(.=="P1")' <<<"$row" >/dev/null; then
+            if jq -e '(.labels // []) | any(.name == "P1")' <<<"$row" >/dev/null; then
               ACK=$ACK_P1; RES=$RES_P1; SEV=P1
             else
               ACK=$ACK_P2; RES=$RES_P2; SEV=P2
             fi
 
-            assigned=$(jq '.assignees | length' <<<"$row")
-            comments=$(gh api repos/${GITHUB_REPOSITORY}/issues/${num}/comments -q 'length' || echo 0)
+            assigned=$(jq -r '(.assignees // []) | length' <<<"$row")
+
+            # считаем комментарии как признак «ack», защищаемся от 403/HTML ответов
+            comments=$(gh api -R "$REPO" \
+                        -H "Accept: application/vnd.github+json" \
+                        "/repos/${REPO}/issues/${num}/comments?per_page=100" \
+                        --silent 2>/dev/null | jq 'length' 2>/dev/null || echo 0)
+
             acked=$(( assigned + comments ))
 
             breach=""
@@ -45,9 +62,11 @@ jobs:
 
             if [ -n "$breach" ]; then
               echo "Issue #$num breached SLA ($breach, $SEV)"
-              gh issue comment "$num" --body ":rotating_light: SLA breach ($breach, $SEV). @MainMuck/oncall please escalate."
-              gh issue edit "$num" --add-label "SLA-breached" >/dev/null
+              gh issue comment -R "$REPO" "$num" \
+                --body ":rotating_light: SLA breach ($breach, $SEV). @MainMuck/oncall please escalate." || true
+              gh issue edit -R "$REPO" "$num" --add-label "SLA-breached" >/dev/null || true
             else
               echo "Issue #$num OK ($SEV, ${age_min}m)"
             fi
           done
+
