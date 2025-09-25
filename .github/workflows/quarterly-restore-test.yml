@@ -34,23 +34,21 @@ jobs:
           echo "Downloading s3://$B/$key"
           aws s3 cp "s3://$B/$key" backup.tgz
 
-          echo "::group::Archive preview"
-          tar tzf backup.tgz | head -n 50
+          echo "::group::Archive preview (first 50 entries)"
+          tar tzf backup.tgz | head -n 50 || true
           echo "::endgroup::"
 
           mkdir -p restore
           tar xzf backup.tgz -C restore
 
-          # новый/старый формат раскладки
-          test -d restore/workflows || test -d restore/.github/workflows || {
-            echo "::error::No workflows dir in archive"
-            ls -la restore || true
+          # принимаем оба формата: 'workflows/' ИЛИ '.github/workflows/'
+          if ls restore/workflows/*.y*ml >/dev/null 2>&1 || ls restore/.github/workflows/*.y*ml >/dev/null 2>&1; then
+            echo "✓ Workflows found in backup"
+          else
+            echo "::error::No workflow files found in archive (expected restore/workflows/*.yml or restore/.github/workflows/*.yml)"
+            echo "Tree under restore/:"
+            find restore -maxdepth 3 -type d -print | sed 's/^/  /'
             exit 1
-          }
-
-          # при желании можно проверить и trust
-          if [ -d restore/trust ] || [ -d restore/.github/trust ]; then
-            echo "✓ trust dir present"
           fi
 
           echo "OK"
