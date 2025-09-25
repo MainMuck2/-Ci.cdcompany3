@@ -18,14 +18,63 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Download latest backup & check
+      - name: Скачать последний бэкап и проверить
         env:
           B: ${{ vars.BACKUP_BUCKET }}
+        shell: bash
         run: |
           set -euo pipefail
-          test -n "$B"
-          key=$(aws s3 ls "s3://$B/backups/" --recursive | sort | awk '{print $4}' | tail -n1)
+          test -n "${B}"
+
+          # Берём самый свежий объект по времени модификации
+          key=$(aws s3api list-objects-v2 \
+                  --bucket "$B" \
+                  --prefix "backups/" \
+                  --query 'reverse(sort_by(Contents,&LastModified))[:1].Key' \
+                  --output text)
+
+          if [[ -z "${key}" || "${key}" == "None" ]]; then
+            echo "::notice::В s3://$B/backups нет бэкапов — пропускаю проверку восстановления"
+            exit 0
+          fi
+
+          echo "Будем скачивать: s3://${B}/${key}"
+
+          echo "::group::Метаданные объекта"
+          aws s3api head-object --bucket "$B" --key "$key" || true
+          echo "::endgroup::"
+
           aws s3 cp "s3://$B/$key" backup.tgz
-          mkdir restore && tar xzf backup.tgz -C restore
-          test -d restore/.github/workflows
+
+          echo "::group::Проверка архива"
+          ls -l backup.tgz || true
+          file backup.tgz || true
+          if ! gzip -t backup.tgz 2>/dev/null; then
+            echo "::error::Скачанный объект не является корректным gzip-архивом (.tgz)."
+            echo "Проверьте job бэкапа и права KMS (если используется SSE-KMS требуется kms:Decrypt для роли)."
+            exit 1
+          fi
+          echo "::endgroup::"
+
+          echo "::group::Просмотр содержимого (первые 50 записей)"
+          tar tzf backup.tgz | head -n 50 || true
+          echo "::endgroup::"
+
+          mkdir -p restore
+          tar xzf backup.tgz -C restore
+
+          # Ищем workflow-файлы в типовых местах (с учётом возможной корневой папки в архиве)
+          if find restore -type f \
+               \( -path '*/.github/workflows/*.yml' -o -path '*/.github/workflows/*.yaml' \
+                  -o -path '*/workflows/*.yml'      -o -path '*/workflows/*.yaml' \) \
+               | grep -q .; then
+            echo "✓ Файлы workflow найдены в бэкапе"
+          else
+            echo "::error::В архиве не найдено файлов workflow (ожидались */.github/workflows/*.yml|yaml или */workflows/*.yml|yaml)"
+            echo "Дерево restore/:"
+            find restore -maxdepth 3 -type d -print | sed 's/^/  /'
+            exit 1
+          fi
+
           echo "OK"
+
