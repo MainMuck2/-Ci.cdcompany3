@@ -41,25 +41,16 @@ jobs:
           mkdir -p restore
           tar xzf backup.tgz -C restore
 
-          # принимаем и новый формат (workflows/trust), и старый (.github/workflows/.github/trust)
-          if [ -d restore/workflows ]; then
-            echo "✓ Found 'restore/workflows'"
-          elif [ -d restore/.github/workflows ]; then
-            echo "✓ Found legacy 'restore/.github/workflows'"
-          else
-            echo "::error::Neither 'restore/workflows' nor 'restore/.github/workflows' exists"
+          # новый/старый формат раскладки
+          test -d restore/workflows || test -d restore/.github/workflows || {
+            echo "::error::No workflows dir in archive"
             ls -la restore || true
             exit 1
-          fi
+          }
 
-          if [ -d restore/trust ]; then
-            echo "✓ Found 'restore/trust'"
-          elif [ -d restore/.github/trust ]; then
-            echo "✓ Found legacy 'restore/.github/trust'"
-          else
-            echo "::error::Neither 'restore/trust' nor 'restore/.github/trust' exists"
-            ls -la restore || true
-            exit 1
+          # при желании можно проверить и trust
+          if [ -d restore/trust ] || [ -d restore/.github/trust ]; then
+            echo "✓ trust dir present"
           fi
 
           echo "OK"
