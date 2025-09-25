@@ -31,12 +31,35 @@ jobs:
             exit 0
           fi
 
+          echo "Downloading s3://$B/$key"
           aws s3 cp "s3://$B/$key" backup.tgz
-          mkdir restore
+
+          echo "::group::Archive preview"
+          tar tzf backup.tgz | head -n 50
+          echo "::endgroup::"
+
+          mkdir -p restore
           tar xzf backup.tgz -C restore
 
-          # архив из Nightly Backup содержит верхний уровень: workflows/ и trust/
-          test -d restore/workflows
-          test -d restore/trust
+          # принимаем и новый формат (workflows/trust), и старый (.github/workflows/.github/trust)
+          if [ -d restore/workflows ]; then
+            echo "✓ Found 'restore/workflows'"
+          elif [ -d restore/.github/workflows ]; then
+            echo "✓ Found legacy 'restore/.github/workflows'"
+          else
+            echo "::error::Neither 'restore/workflows' nor 'restore/.github/workflows' exists"
+            ls -la restore || true
+            exit 1
+          fi
+
+          if [ -d restore/trust ]; then
+            echo "✓ Found 'restore/trust'"
+          elif [ -d restore/.github/trust ]; then
+            echo "✓ Found legacy 'restore/.github/trust'"
+          else
+            echo "::error::Neither 'restore/trust' nor 'restore/.github/trust' exists"
+            ls -la restore || true
+            exit 1
+          fi
 
           echo "OK"
