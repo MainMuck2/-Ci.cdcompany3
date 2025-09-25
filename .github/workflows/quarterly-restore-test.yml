@@ -24,12 +24,19 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$B"
+
           key=$(aws s3 ls "s3://$B/backups/" --recursive | sort | awk '{print $4}' | tail -n1)
           if [ -z "$key" ]; then
             echo "::notice::No backups found in s3://$B/backups — skipping restore test"
             exit 0
           fi
+
           aws s3 cp "s3://$B/$key" backup.tgz
-          mkdir restore && tar xzf backup.tgz -C restore
-          test -d restore/.github/workflows
+          mkdir restore
+          tar xzf backup.tgz -C restore
+
+          # архив из Nightly Backup содержит верхний уровень: workflows/ и trust/
+          test -d restore/workflows
+          test -d restore/trust
+
           echo "OK"
