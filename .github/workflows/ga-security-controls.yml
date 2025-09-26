@@ -596,7 +596,7 @@ jobs:
   # ---------------- Release-only gate + trust-store verify for deploy ----------------
   prod_release_gate:
     needs: [access_recert_gate, build_and_attest, trust_store_guard, kms_sign_and_verify, sbom_enforce, verify_action_publishers]
-    if: ${{ github.event_name == 'push' }}
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
