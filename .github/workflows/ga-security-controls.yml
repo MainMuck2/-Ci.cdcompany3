@@ -28,7 +28,7 @@ env:
 
 jobs:
  
-    no_floating_images:
+  no_floating_images:
     name: M2 — forbid ':latest' and unpinned base images
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
@@ -75,11 +75,7 @@ jobs:
           fi
           echo "All Dockerfiles pinned ✅"
 
-  
-  
-  
-  
-  
+   
   
   
   
