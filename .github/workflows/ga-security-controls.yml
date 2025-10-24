@@ -35,7 +35,52 @@ env:
   ENFORCEMENT: warn
   CAN_ATTEST: ${{ (github.event_name == 'push') || (github.event_name == 'workflow_dispatch') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
 
-jobs:
+jobs: 
+  allowed_signers_gate:
+    name: M2 — allowed signers (HARD FAIL)
+    runs-on: ubuntu-latest
+    needs: [trust_store_guard]
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+
+      - name: Ensure policy file exists
+        run: |
+          test -f .github/trust/allowed_signers.json || {
+            echo "::error::missing .github/trust/allowed_signers.json"; exit 1; }
+
+      - name: Read OIDC and enforce allowed_signers
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Получаем OIDC-токен этого job
+          tok=$(curl -fsSL \
+                 -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+                 "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" \
+                 | jq -r .value)
+
+          body=$(cut -d. -f2 <<<"$tok" | base64 -d 2>/dev/null)
+          wf_full=$(jq -r '.job_workflow_ref' <<<"$body")   # owner/repo/.github/workflows/X.yml@sha
+          wf_base="${wf_full%@*}"                           # owner/repo/.github/workflows/X.yml
+
+          echo "workflow_ref(full) = $wf_full"
+          echo "workflow_ref(base) = $wf_base"
+
+          # Валимся, если ни base, ни full нет в allow-list
+          if jq -e --arg a "$wf_full" --arg b "$wf_base" \
+               'index($a) != null or index($b) != null' \
+               .github/trust/allowed_signers.json >/dev/null; then
+            echo "✓ signer/workflow is allowed"
+          else
+            echo "::error::workflow not in allowed_signers (wf=$wf_full; base=$wf_base)"
+            echo "Current policy:"; cat .github/trust/allowed_signers.json
+            exit 1
+          fi
+
+
 
   third_party_allowlist_guard:
     name: M2 — third-party allow-list & pin to SHA (HARD FAIL)
@@ -82,6 +127,7 @@ jobs:
             done
           done
           exit $status
+
 
 
   no_floating_images:
