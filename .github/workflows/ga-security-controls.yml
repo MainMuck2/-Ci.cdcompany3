@@ -213,30 +213,35 @@ jobs:
           [ $failures -eq 0 ] || true  # WARN-only
 
   tamper_after_sbom:
-  stage: attest
-  rules:
-    - if: '$TAMPER_SBOM == "1"'
-      when: on_success
-    - when: never
-  needs:
-    - job: sbom_syft
-      artifacts: true
-    - job: build_artifact
-      artifacts: true
-  script: |
-    set -eu
-    echo "⚠️ Tampering artifact.txt AFTER SBOM generation..."
-    # Портим артефакт (меняем содержимое после того, как SBOM уже посчитан)
-    printf '\nTAMPERED %s\n' "$(date -u +%FT%TZ)" >> artifact.txt
-    # (альтернатива — испортить сам SBOM, тогда разойдётся attest vs artifact)
-    # apk add --no-cache jq
-    # jq '.files |= map(if .fileName=="artifact.txt" then .checksums[0].checksumValue="deadbeef" else . end)' sbom.spdx.json > t && mv t sbom.spdx.json
-  artifacts:
-    when: always
-    paths:
-      - artifact.txt
-      - sbom.spdx.json
-    expire_in: 1 week
+    name: ⚠️ tamper_after_sbom
+    needs: [build_and_attest]
+    runs-on: ubuntu-latest
+    # запускаем либо вручную с input, либо просто на PR (удобно для теста)
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' &&
+       (github.event.inputs.tamper_sbom == 'true' || env.TAMPER_SBOM == '1'))
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: build
+
+      - name: Tamper artifact AFTER SBOM
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '\nTAMPERED %s\n' "$(date -u +%FT%TZ)" >> artifact.txt
+          # перезапишем checksums.txt чтобы не мешал (опционально)
+          sha256sum artifact.txt | tee checksums.txt
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: build
+          path: |
+            artifact.txt
+            checksums.txt
+            sbom.spdx.json
+          overwrite: true
 
   
   
@@ -418,7 +423,7 @@ jobs:
             checksums.txt
 
   # ---------------- SBOM enforce ----------------
-    sbom_enforce:
+  sbom_enforce:
     needs: [build_and_attest, tamper_after_sbom]
     runs-on: ubuntu-latest
     steps:
@@ -431,12 +436,12 @@ jobs:
           set -euo pipefail
           A=$(sha256sum artifact.txt | awk '{print $1}')
           S=$(jq -r '.files[]?|select(.fileName=="artifact.txt")|.checksums[]?|select(.algorithm=="SHA256")|.checksumValue' sbom.spdx.json | head -n1)
-          if [ -n "$S" ] && [ "$A" = "$S" ]; then
-            echo "SBOM OK"
-          else
+          if [ -z "$S" ] || [ "$A" != "$S" ]; then
             echo "::error::SBOM mismatch/missing (artifact=$A, sbom=${S:-<none>})"
             exit 1
           fi
+          echo "SBOM OK"
+
 
 
   # ---------------- Secrets presence gate ----------------
