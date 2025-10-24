@@ -37,61 +37,54 @@ env:
 
 jobs:
 
-third_party_allowlist_guard:
-  name: M2 — third-party allow-list & pin to SHA (HARD FAIL)
-  runs-on: ubuntu-latest
-  permissions: { contents: read }
-  steps:
-    - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
-
-    - name: Load policy
-      id: pol
-      shell: bash
-      run: |
-        set -euo pipefail
-        test -f ".github/trust/allowed_actions.json" || { echo "::error::.github/trust/allowed_actions.json missing"; exit 1; }
-        echo "OWNERS_REGEX=$(jq -r '.owners_regex' .github/trust/allowed_actions.json)" >> "$GITHUB_OUTPUT"
-        jq -r '.allowed_full[]?' .github/trust/allowed_actions.json > _allowed_full.txt
-
-    - name: Enforce owners allow-list + pin to 40-char SHA
-      env:
-        OWNERS_REGEX: ${{ steps.pol.outputs.OWNERS_REGEX }}
-      shell: bash
-      run: |
-        set -euo pipefail
-        status=0
-        # найдём все workflow-файлы
-        mapfile -t WF < <(git ls-files .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null || true)
-        echo "Workflows: ${#WF[@]}"
-        for f in "${WF[@]}"; do
-          echo ">> $f"
-          # вытащим все значения после 'uses:' в виде 'owner/repo@ref'
-          mapfile -t USES < <(awk '/^[[:space:]-]*uses:/{print $0}' "$f" | sed -E 's/^[[:space:]-]*uses:[[:space:]]*//')
-          echo "   found uses: ${#USES[@]}"
-          for u in "${USES[@]}"; do
-            owner="$(awk -F'[/:@]' '{print $1}' <<<"$u")"
-            ref="$(awk -F'@' '{print $2}' <<<"$u")"
-
-            # 1) владелец по allow-list
-            if ! [[ "$owner" =~ $OWNERS_REGEX ]]; then
-              if grep -Fxq "$u" _allowed_full.txt 2>/dev/null; then
-                echo "   allow-full OK: $u"
-              else
-                echo "::error file=$f::owner '$owner' is NOT allowed (uses: $u)"
+  third_party_allowlist_guard:
+    name: M2 — third-party allow-list & pin to SHA (HARD FAIL)
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - name: Load policy
+        id: pol
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f ".github/trust/allowed_actions.json" || { echo "::error::.github/trust/allowed_actions.json missing"; exit 1; }
+          echo "OWNERS_REGEX=$(jq -r '.owners_regex' .github/trust/allowed_actions.json)" >> "$GITHUB_OUTPUT"
+          jq -r '.allowed_full[]?' .github/trust/allowed_actions.json > _allowed_full.txt
+      - name: Enforce owners allow-list + pin to 40-char SHA
+        env:
+          OWNERS_REGEX: ${{ steps.pol.outputs.OWNERS_REGEX }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=0
+          mapfile -t WF < <(git ls-files .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null || true)
+          echo "Workflows: ${#WF[@]}"
+          for f in "${WF[@]}"; do
+            echo ">> $f"
+            mapfile -t USES < <(awk '/^[[:space:]-]*uses:/{print $0}' "$f" | sed -E 's/^[[:space:]-]*uses:[[:space:]]*//')
+            echo "   found uses: ${#USES[@]}"
+            for u in "${USES[@]}"; do
+              owner="$(awk -F'[/:@]' '{print $1}' <<<"$u")"
+              ref="$(awk -F'@' '{print $2}' <<<"$u")"
+              if ! [[ "$owner" =~ $OWNERS_REGEX ]]; then
+                if grep -Fxq "$u" _allowed_full.txt 2>/dev/null; then
+                  :
+                else
+                  echo "::error file=$f::owner '$owner' is NOT allowed (uses: $u)"
+                  status=1
+                fi
+              fi
+              if ! [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then
+                echo "::error file=$f::'$u' is NOT pinned to full 40-char commit SHA"
                 status=1
               fi
-            fi
-
-            # 2) pin к полному SHA
-            if ! [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then
-              echo "::error file=$f::'$u' is NOT pinned to full 40-char commit SHA"
-              status=1
-            fi
+            done
           done
-        done
-        exit $status
- 
- no_floating_images:
+          exit $status
+
+
+  no_floating_images:
     name: M2 — forbid ':latest' and unpinned base images
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
