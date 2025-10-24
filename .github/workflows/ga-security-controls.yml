@@ -90,8 +90,8 @@ third_party_allowlist_guard:
           done
         done
         exit $status
-
-  no_floating_images:
+ 
+no_floating_images:
     name: M2 — forbid ':latest' and unpinned base images
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
