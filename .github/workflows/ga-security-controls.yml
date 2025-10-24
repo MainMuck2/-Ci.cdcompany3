@@ -36,6 +36,61 @@ env:
   CAN_ATTEST: ${{ (github.event_name == 'push') || (github.event_name == 'workflow_dispatch') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
 
 jobs:
+
+  third_party_allowlist_guard:
+    name: M2 — third-party allow-list & pin to SHA (HARD FAIL)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+
+      - name: Load policy
+        id: pol
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f ".github/trust/allowed_actions.json" || { echo "::error::.github/trust/allowed_actions.json missing"; exit 1; }
+          echo "OWNERS_REGEX=$(jq -r '.owners_regex' .github/trust/allowed_actions.json)" >> "$GITHUB_OUTPUT"
+          jq -r '.allowed_full[]?' .github/trust/allowed_actions.json > _allowed_full.txt || true
+
+      - name: Install yq
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64"
+          chmod +x /usr/local/bin/yq
+
+      - name: Enforce owners allow-list + pin to 40-char SHA
+        env:
+          OWNERS_REGEX: ${{ steps.pol.outputs.OWNERS_REGEX }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=0
+          mapfile -t WF < <(git ls-files '.github/workflows/*.y*ml' 2>/dev/null || true)
+          for f in "${WF[@]}"; do
+            while read -r uses; do
+              # пример: actions/checkout@08eba0b27e8...
+              owner=$(awk -F'[/:@]' '{print $1}' <<<"$uses")
+              ref=$(awk -F'@' '{print $2}' <<<"$uses")
+              if ! [[ "$owner" =~ $OWNERS_REGEX ]]; then
+                # если владелец не из allow-list, но сочетание полностью whitelisted — пропускаем
+                if grep -Fxq "$uses" _allowed_full.txt 2>/dev/null; then
+                  :
+                else
+                  echo "::error file=$f::owner '$owner' is NOT allowed (uses: $uses)"
+                  status=1
+                fi
+              fi
+              # pin к полному SHA (ровно 40 hex)
+              if ! [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then
+                echo "::error file=$f::'$uses' is NOT pinned to full 40-char commit SHA"
+                status=1
+              fi
+            done < <(yq -r '.. | .uses? | select(type=="string")' "$f")
+          done
+          exit $status
  
   no_floating_images:
     name: M2 — forbid ':latest' and unpinned base images
