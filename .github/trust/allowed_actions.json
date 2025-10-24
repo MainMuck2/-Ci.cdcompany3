@@ -1,0 +1,14 @@
+{
+  "owners_regex": "^(actions|github|aws-actions|google-github-actions|dependabot|azure)$",
+  "allowed_full": [
+    "actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955",
+    "github/codeql-action/init@192325c86100d080feab897ff886c34abd4c83a3",
+    "github/codeql-action/analyze@192325c86100d080feab897ff886c34abd4c83a3",
+    "actions/dependency-review-action@595b5aeba73380359d98a5e087f648dbb0edce1b",
+    "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+    "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
+    "aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a",
+    "actions/attest-build-provenance@ef244123eb79f2f7a7e75d99086184180e6d0018",
+    "actions/attest-sbom@5026d3663739160db546203eeaffa6aa1c51a4d6"
+  ]
+}
