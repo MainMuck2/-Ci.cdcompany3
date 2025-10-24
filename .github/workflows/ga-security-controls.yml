@@ -131,7 +131,7 @@ jobs:
           base-ref: ${{ steps.deprefs.outputs.base }}
           head-ref: ${{ github.sha }}
           fail-on-severity: critical
-        continue-on-error: true
+        continue-on-error: false
 
   # --------------- Verify action publishers (allow-list + pin) ---------------
   verify_action_publishers:
@@ -178,7 +178,7 @@ jobs:
 
           if [ $status -ne 0 ]; then
             echo "::warning::violations found in uses:, but ENFORCEMENT=WARN → not failing"
-            exit 0
+            exit 1
           fi
 
   # ---------------- Build + SBOM + Attest ----------------
@@ -1087,7 +1087,7 @@ jobs:
           done < <(printf '%s\n' "${{ steps.cf.outputs.all_changed_files }}" | grep -E '^\.?github/workflows/.*\.ya?ml$' || true)
           if [ $status -ne 0 ]; then
             echo "::warning::violations found, but WARN mode → not failing"
-            exit 0
+            exit 1
           fi
 
       - name: actionlint (download binary, WARN only)
