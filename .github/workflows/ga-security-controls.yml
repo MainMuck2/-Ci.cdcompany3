@@ -1,3 +1,4 @@
+
 name: Security Framework Gates
 
 on:
@@ -8,8 +9,16 @@ on:
     branches: ["main", "release/*"]
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
+    inputs:
+      tamper_sbom:
+        description: "Tamper artifact AFTER SBOM?"
+        required: false
+        type: boolean
+        default: false
   schedule:
-    - cron: "0 */6 * * *" # каждые 6 часов авто-синк trust-store (org → repo)
+    - cron: "0 */6 * * *"
+
+
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -213,14 +222,10 @@ jobs:
           [ $failures -eq 0 ] || true  # WARN-only
 
   tamper_after_sbom:
-    name: ⚠️ tamper_after_sbom
+    name: "⚠️ tamper_after_sbom"
     needs: [build_and_attest]
     runs-on: ubuntu-latest
-    # запускаем либо вручную с input, либо просто на PR (удобно для теста)
-    if: |
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'workflow_dispatch' &&
-       (github.event.inputs.tamper_sbom == 'true' || env.TAMPER_SBOM == '1'))
+    if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tamper_sbom == 'true') }}
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
@@ -231,7 +236,6 @@ jobs:
         run: |
           set -euo pipefail
           printf '\nTAMPERED %s\n' "$(date -u +%FT%TZ)" >> artifact.txt
-          # перезапишем checksums.txt чтобы не мешал (опционально)
           sha256sum artifact.txt | tee checksums.txt
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -441,6 +445,7 @@ jobs:
             exit 1
           fi
           echo "SBOM OK"
+
 
 
 
