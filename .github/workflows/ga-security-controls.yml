@@ -37,7 +37,7 @@ env:
 
 jobs:
 
-third_party_allowlist_guard:
+ third_party_allowlist_guard:
   name: M2 — third-party allow-list & pin to SHA (HARD FAIL)
   runs-on: ubuntu-latest
   permissions: { contents: read }
@@ -91,7 +91,7 @@ third_party_allowlist_guard:
         done
         exit $status
  
-no_floating_images:
+ no_floating_images:
     name: M2 — forbid ':latest' and unpinned base images
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
