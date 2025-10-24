@@ -12,6 +12,8 @@ permissions:
 jobs:
   backup:
     runs-on: ubuntu-latest
+    env:
+      TZ: UTC
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
@@ -25,15 +27,25 @@ jobs:
           set -euo pipefail
           mkdir -p out
           cp -r .github/workflows out/ || true
-          cp -r .github/trust out/ || true
+          cp -r .github/trust     out/ || true
           [ -f .github/CODEOWNERS ] && cp .github/CODEOWNERS out/ || true
-          [ -f sbom.spdx.json ] && cp sbom.spdx.json out/ || true
+          [ -f sbom.spdx.json ]    && cp sbom.spdx.json     out/ || true
           tar czf "backup-$(date -u +%F).tgz" -C out .
 
       - name: Upload to S3
         env:
           B: ${{ vars.BACKUP_BUCKET }}
+          BACKUP_KMS_KEY_ID: ${{ vars.BACKUP_KMS_KEY_ID }} # опционально: ARN/ID KMS ключа
         run: |
           set -euo pipefail
-          test -n "$B"
-          aws s3 cp backup-*.tgz "s3://$B/backups/$(date -u +%Y/%m)/"
+          test -n "${B:?BACKUP_BUCKET not set}"
+
+          # Если задан BACKUP_KMS_KEY_ID — используем KMS, иначе AES256
+          SSE_ARGS="--sse AES256"
+          if [ -n "${BACKUP_KMS_KEY_ID:-}" ]; then
+            SSE_ARGS="--sse aws:kms --sse-kms-key-id ${BACKUP_KMS_KEY_ID}"
+          fi
+
+          dst="s3://$B/backups/$(date -u +%Y/%m)/"
+          echo "Uploading backup to: $dst  ($SSE_ARGS)"
+          aws s3 cp --only-show-errors backup-*.tgz "$dst" $SSE_ARGS

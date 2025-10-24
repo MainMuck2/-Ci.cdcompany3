@@ -1,3 +1,4 @@
+
 name: Security Framework Gates
 
 on:
@@ -8,8 +9,16 @@ on:
     branches: ["main", "release/*"]
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
+    inputs:
+      tamper_sbom:
+        description: "Tamper artifact AFTER SBOM?"
+        required: false
+        type: boolean
+        default: false
   schedule:
-    - cron: "0 */6 * * *" # каждые 6 часов авто-синк trust-store (org → repo)
+    - cron: "0 */6 * * *"
+
+
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -195,8 +204,7 @@ jobs:
       - name: Build artifact
         run: |
           echo "hello $(date -u +%FT%TZ)" > artifact.txt
-          sha256sum artifact.txt | tee checksums.txt
-
+          sha256sum artifact.txt | tee checksums.txt 
       - name: Export SBOM (Syft)
         shell: bash
         run: |
@@ -265,6 +273,37 @@ jobs:
           done
           [ $failures -eq 0 ] || true  # WARN-only
 
+  tamper_after_sbom:
+    name: "⚠️ tamper_after_sbom"
+    needs: [build_and_attest]
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tamper_sbom == 'true') }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: build
+
+      - name: Tamper artifact AFTER SBOM
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '\nTAMPERED %s\n' "$(date -u +%FT%TZ)" >> artifact.txt
+          sha256sum artifact.txt | tee checksums.txt
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: build
+          path: |
+            artifact.txt
+            checksums.txt
+            sbom.spdx.json
+          overwrite: true
+
+  
+  
+  
+  
+  
   # ---------------- Trust-store (JWKS / allowed_signers / revocations) ----------------
   trust_store_guard:
     runs-on: ubuntu-latest
@@ -279,23 +318,31 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .github/trust
+          SRC=""
           if [ -n "${ORG_TRUST_REPO:-}" ]; then
-            gh repo clone "$ORG_TRUST_REPO" _orgtrust -- -q || true
-            if [ -f _orgtrust/.github/trust/publishers.jwks.json ]; then
-              cp -r _orgtrust/.github/trust/* .github/trust/ || true
-              echo "source=org" >> "$GITHUB_OUTPUT"
+            echo "Trying to clone org trust repo: ${ORG_TRUST_REPO}"
+            if gh repo clone "$ORG_TRUST_REPO" _orgtrust -- -q; then
+              if [ -d _orgtrust/.github/trust ]; then
+                cp -a _orgtrust/.github/trust/. .github/trust/
+                SRC="org:${ORG_TRUST_REPO}"
+              fi
             else
-              echo "source=local" >> "$GITHUB_OUTPUT"
+              echo "::notice::gh clone failed (private repo or GH_TOKEN missing?)"
             fi
-          else
-            echo "source=local" >> "$GITHUB_OUTPUT"
           fi
+          if [ -z "$SRC" ] && [ -d ".github/trust" ] && [ -f ".github/trust/publishers.jwks.json" ]; then
+            SRC="local:.github/trust (already present)"
+          fi
+          echo "source=${SRC:-none}" >> "$GITHUB_OUTPUT"
+          echo "Resolved trust-store source: ${SRC:-none}"
+          ls -la .github/trust || true
+
       - name: Validate trust-store files
         env:
           AWS_KMS_KEY_ID: ${{ vars.AWS_KMS_KEY_ID }}
         run: |
           set -euo pipefail
-          test -f .github/trust/publishers.jwks.json || { echo "::error::JWKS missing"; exit 1; }
+          test -f .github/trust/publishers.jwks.json || { echo "::error::JWKS missing (.github/trust/publishers.jwks.json)"; exit 1; }
           jq -e '.keys|length>0' .github/trust/publishers.jwks.json >/dev/null
           test -f .github/trust/allowed_signers.json || { echo "::error::allowed_signers.json missing"; exit 1; }
           test -f .github/trust/revocations.json || { echo "::group::revocations.json missing -> treat as empty"; echo '{"kids":[]}' > .github/trust/revocations.json; echo "::endgroup::"; }
@@ -304,6 +351,27 @@ jobs:
             jq -r '.keys[].kid' .github/trust/publishers.jwks.json | grep -Fx "$K" >/dev/null || {
               echo "::warning::KID mismatch (expected $K)"; true; }
           fi
+          echo "Trust-store ready:"
+          ls -l .github/trust
+          jq -r '.keys[].kid' .github/trust/publishers.jwks.json
+
+  # ---------------- Access recertification gate (BLOCK on expiry) ----------------
+  access_recert_gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - name: Block if any group recert is expired
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .github/trust/access_catalog.json || { echo "::error::missing .github/trust/access_catalog.json"; exit 1; }
+          NOW=$(date -u +%F)
+          EXPIRED=$(jq -r --arg NOW "$NOW" '.groups[] | select(.recert_expires_at < $NOW) | .name' .github/trust/access_catalog.json)
+          if [ -n "$EXPIRED" ]; then
+            echo "::error::Access recert expired for groups:"; echo "$EXPIRED" | sed 's/^/- /'
+            exit 1
+          fi
+          echo "Access recert OK as of $NOW"
 
   # ---------------- KMS sign + verify ----------------
   kms_sign_and_verify:
@@ -339,10 +407,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .github/trust
-          if [ -n "${ORG_TRUST_REPO:-}" ]; then
-            gh repo clone "$ORG_TRUST_REPO" _orgtrust -- -q || true
-            test -d _orgtrust/.github/trust && cp -r _orgtrust/.github/trust/* .github/trust/ || true
+          if [ -n "${ORG_TRUST_REPO:-}" ] && gh repo clone "$ORG_TRUST_REPO" _orgtrust -- -q; then
+            test -d _orgtrust/.github/trust && cp -a _orgtrust/.github/trust/. .github/trust/ || true
           fi
+          ls -la .github/trust || true
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
@@ -412,20 +480,26 @@ jobs:
 
   # ---------------- SBOM enforce ----------------
   sbom_enforce:
-    needs: [build_and_attest]
+    needs: [build_and_attest, tamper_after_sbom]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: build
-      - name: Enforce SBOM digest (WARN only)
+      - name: Enforce SBOM digest (FAIL on mismatch)
         shell: bash
         run: |
           set -euo pipefail
           A=$(sha256sum artifact.txt | awk '{print $1}')
           S=$(jq -r '.files[]?|select(.fileName=="artifact.txt")|.checksums[]?|select(.algorithm=="SHA256")|.checksumValue' sbom.spdx.json | head -n1)
-          [ -n "$S" ] && [ "$A" = "$S" ] && echo "SBOM OK" || {
-            echo "::warning::SBOM mismatch/missing (artifact=$A, sbom=$S)"; exit 0; }
+          if [ -z "$S" ] || [ "$A" != "$S" ]; then
+            echo "::error::SBOM mismatch/missing (artifact=$A, sbom=${S:-<none>})"
+            exit 1
+          fi
+          echo "SBOM OK"
+
+
+
 
   # ---------------- Secrets presence gate ----------------
   secrets_presence_gate:
@@ -632,10 +706,30 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .github/trust
+          SRC=""
           if [ -n "${ORG_TRUST_REPO:-}" ]; then
-            gh repo clone "$ORG_TRUST_REPO" _orgtrust -- -q || true
-            test -d _orgtrust/.github/trust && cp -r _orgtrust/.github/trust/* .github/trust/ || true
+            echo "Cloning trust-store from ${ORG_TRUST_REPO}…"
+            if gh repo clone "$ORG_TRUST_REPO" _orgtrust -- -q; then
+              if [ -d _orgtrust/.github/trust ]; then
+                cp -a _orgtrust/.github/trust/. .github/trust/
+                SRC="org:${ORG_TRUST_REPO}"
+              fi
+            else
+              echo "::notice::gh clone failed (private repo or ORG_READ_TOKEN missing?)"
+            fi
           fi
+          # If org sync didn't work but repo already has trust-store — use it
+          if [ -z "$SRC" ] && [ -f ".github/trust/publishers.jwks.json" ]; then
+            SRC="local:.github/trust"
+          fi
+          echo "Using trust-store source: ${SRC:-<none>}"
+          ls -la .github/trust || true
+          # Hard fail with actionable message if still missing
+          if [ ! -f ".github/trust/publishers.jwks.json" ]; then
+            echo "::error::missing .github/trust/publishers.jwks.json. Set repo var ORG_TRUST_REPO (owner/repo) and secret ORG_READ_TOKEN with read access to it, or commit .github/trust/* to this repo."
+            exit 1
+          fi
+          test -f .github/trust/allowed_signers.json || { echo "::error::missing .github/trust/allowed_signers.json"; exit 1; }
 
       - name: Enforce release-only refs
         shell: bash
@@ -647,8 +741,8 @@ jobs:
       - name: Check key revocations
         run: |
           set -euo pipefail
-          test -f .github/trust/revocations.json || { echo "no revocations.json -> OK"; exit 0; }
           KID="AWS:${{ vars.AWS_KMS_KEY_ID }}"
+          test -f .github/trust/revocations.json || { echo "no revocations.json -> OK"; exit 0; }
           jq -r '.kids[]?' .github/trust/revocations.json | grep -Fx "$KID" && {
             echo "::error::Key revoked ($KID)"; exit 1; } || echo "KID not revoked"
 
@@ -665,15 +759,41 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tok=$(curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" | jq -r .value)
-          test -n "$tok"
-          body=$(echo "$tok" | awk -F. '{print $2}' | base64 -d 2>/dev/null)
-          repo=$(jq -r .repository <<<"$body")
-          ref=$(jq -r .ref <<<"$body")
-          wf=$(jq -r .job_workflow_ref <<<"$body")
+          test -f .github/trust/allowed_signers.json || { echo "::error::missing .github/trust/allowed_signers.json"; exit 1; }
+
+          echo "has URL: ${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}  has TOKEN: ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+yes}"
+
+          tok=$(curl -fsSL \
+                 -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+                 "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" \
+                 | jq -r .value)
+
+          if ! echo "$tok" | grep -q '\.'; then
+            echo "::error::failed to obtain OIDC token (check permissions: id-token: write)"; exit 1
+          fi
+
+          body=$(cut -d. -f2 <<<"$tok" | base64 -d 2>/dev/null || true)
+          repo=$(jq -er '.repository' <<<"$body") || { echo "::error::bad OIDC body"; exit 1; }
+          ref=$(jq -r '.ref // empty' <<<"$body")
+          wf=$(jq -r '.job_workflow_ref // empty' <<<"$body")
+
+          echo "repo=$repo"
+          echo "ref=$ref"
+          echo "wf=$wf"
+
           [ "$repo" = "${GITHUB_REPOSITORY}" ] || { echo "::error::OIDC repo mismatch"; exit 1; }
-          echo "$ref" | grep -Eq '^refs/(heads/(main|release/.*)|tags/v.*)$' || { echo "::error::OIDC ref not allowed"; exit 1; }
-          jq -r '.[]?' .github/trust/allowed_signers.json | grep -Fx "$wf" >/dev/null || { echo "::error::workflow not in allowed_signers"; exit 1; }
+          echo "$ref" | grep -Eq '^refs/(heads/(main|release/.*)|tags/v.*)$' || { echo "::error::OIDC ref not allowed ($ref)"; exit 1; }
+
+          wfbase="${wf%@*}"
+          if jq -e --arg wf "$wf" --arg wb "$wfbase" \
+               'type=="array" and (map(select(.==$wf or .==$wb)) | length > 0)' \
+               .github/trust/allowed_signers.json >/dev/null; then
+            echo "workflow allowed"
+          else
+            echo "::error::workflow not in allowed_signers (wf=$wf; wfbase=$wfbase)"
+            cat .github/trust/allowed_signers.json
+            exit 1
+          fi
 
   # ---------------- Promote to Production ----------------
   promote_to_prod:
@@ -683,12 +803,13 @@ jobs:
       name: production
     concurrency:
       group: deploy-${{ github.ref_name }}
-      cancel-in-progress: true
     steps:
       - run: echo "All upstream gates passed. Waiting for env approval…"
 
   # ---------------- Rollback to Production ----------------
   rollback_to_prod:
+    
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
     needs: [prod_release_gate, access_recert_gate]
     runs-on: ubuntu-latest
     environment:
@@ -723,24 +844,6 @@ jobs:
       name: admin-ops
     steps:
       - run: echo "Admin operation on trusted/registration runners. Waiting for environment approval..."
-
-  # ---------------- Access recertification gate (BLOCK on expiry) ----------------
-  access_recert_gate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
-      - name: Block if any group recert is expired
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -f .github/trust/access_catalog.json || { echo "::error::missing .github/trust/access_catalog.json"; exit 1; }
-          NOW=$(date -u +%F)
-          EXPIRED=$(jq -r --arg NOW "$NOW" '.groups[] | select(.recert_expires_at < $NOW) | .name' .github/trust/access_catalog.json)
-          if [ -n "$EXPIRED" ]; then
-            echo "::error::Access recert expired for groups:"; echo "$EXPIRED" | sed 's/^/- /'
-            exit 1
-          fi
-          echo "Access recert OK as of $NOW"
 
   # ---------------- Trust-store auto-rotation ----------------
   trust_store_rotate:
