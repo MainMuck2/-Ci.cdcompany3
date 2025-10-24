@@ -69,3 +69,4 @@ jobs:
               echo "Issue #$num OK ($SEV, ${age_min}m)"
             fi
           done
+

@@ -36,6 +36,58 @@ env:
   CAN_ATTEST: ${{ (github.event_name == 'push') || (github.event_name == 'workflow_dispatch') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
 
 jobs:
+ 
+  no_floating_images:
+    name: M2 — forbid ':latest' and unpinned base images
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+
+      - name: Fail on floating Docker base images
+        shell: bash
+        run: |
+          set -euo pipefail
+          # соберём список Dockerfile'ов
+          mapfile -t DF < <(git ls-files | grep -Ei '(^|/)(Dockerfile|.*\.Dockerfile)$' || true)
+          [ ${#DF[@]} -gt 0 ] || { echo "No Dockerfiles found"; exit 0; }
+
+          bad=0
+          echo "Checking Dockerfiles:"
+          for f in "${DF[@]}"; do
+            echo "  - $f"
+            # вытащим строки FROM (без комментариев)
+            while IFS= read -r line; do
+              img=$(sed -E 's/^[[:space:]]*FROM[[:space:]]+//I; s/[[:space:]]+AS.*$//I' <<<"$line")
+              # правила:
+              # 1) запрещён ':latest'
+              # 2) запрещено без тега И без @sha256 (т.е. должен быть либо tag, либо digest)
+              if grep -Eq ':[[:alnum:]_.-]+(@sha256:[0-9a-f]{64})?$' <<<"$img"; then
+                tag="${img##*:}"
+                if [[ "$tag" == "latest" ]]; then
+                  echo "::error file=$f::FROM uses ':latest' → $line"
+                  bad=1
+                fi
+              elif grep -Eq '@sha256:[0-9a-f]{64}$' <<<"$img"; then
+                : # ок — пин по digest
+              else
+                echo "::error file=$f::FROM without explicit tag or digest → $line"
+                bad=1
+              fi
+            done < <(grep -Ei '^[[:space:]]*FROM[[:space:]]+' "$f" | grep -Ev '^[[:space:]]*#')
+          done
+
+          if [ $bad -ne 0 ]; then
+            echo "ERROR: Floating base images detected"; exit 1
+          fi
+          echo "All Dockerfiles pinned ✅"
+
+   
+  
+  
+  
   # ---------------- SAST / SCA presence ----------------
   codeql:
     runs-on: ubuntu-latest
@@ -758,6 +810,7 @@ jobs:
   rollback_to_prod:
     
     if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+    needs: [prod_release_gate, access_recert_gate]
     runs-on: ubuntu-latest
     environment:
       name: production
