@@ -1,9 +1,6 @@
 {
-  "owners_regex": "^(actions)$",
+  "owners_regex": "^(actions|github|aws-actions|google-github-actions|dependabot|azure)$",
   "allowed_full": [
-   
-    "github/codeql-action/init@192325c86100d080feab897ff886c34abd4c83a3",
-  
-   
+    "github/codeql-action/init@192325c86100d080feab897ff886c34abd4c83a3"
   ]
 }
