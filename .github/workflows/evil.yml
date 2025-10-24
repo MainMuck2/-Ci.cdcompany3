@@ -1,0 +1,10 @@
+name: evil
+on: workflow_dispatch
+jobs:
+  bad:
+    runs-on: ubuntu-latest
+    steps:
+      # Владелец НЕ из allow-list + нет пина на 40-симв SHA
+      - uses: riskycorp/unknown-action@main
+      # Даже «хороший» владелец, но без пина — тоже нарушение
+      - uses: actions/checkout@v4
